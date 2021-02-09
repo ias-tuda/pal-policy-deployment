@@ -1,0 +1,9 @@
+gains:
+  leg_left_1_joint:  {p:  500, d: 50, i:  1, i_clamp:   14, torque_clamp: 160}
+  leg_left_2_joint:  {p:  500, d: 50, i:  1, i_clamp:   25, torque_clamp: 300}
+  leg_left_3_joint:  {p:  500, d: 50, i:  1, i_clamp:   14, torque_clamp: 160}
+  leg_left_4_joint:  {p:  500, d: 50, i:  1, i_clamp:   25, torque_clamp: 300}
+  leg_left_5_joint:  {p:  500, d: 50, i:  1, i_clamp:   14, torque_clamp: 160}
+  leg_left_6_joint:  {p:  50, d: 0, i:  1, i_clamp:   25, torque_clamp: 300}
+  leg_left_7_joint:  {p:  50, d: 0, i:  1, i_clamp:   25, torque_clamp: 300}
+  leg_left_length_joint: {p:  10000, d: 50, i:  1, i_clamp:   25, torque_clamp: 300}

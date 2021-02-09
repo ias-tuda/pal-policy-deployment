@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <arg name="debug"         default="false"/>
+  <arg name="valgrind"      default="false"/>
+  <arg name="dt"            default="0.0005"/>
+  <arg name="robot"         default="full"/>
+  <arg name="enable_crane"  default="false"/> 
+  <arg name="simulation"    default="false"/>
+  <arg name="fixed_base"    default="false"/>
+  <arg name="world"         default=""/>
+
+  <!-- Load Kangaroo description with -->
+  <include file="$(find kangaroo_description)/robots/upload.launch">
+    <arg name="enable_crane"  value="$(arg enable_crane)"/> 
+    <arg name="simulation"    value="$(arg simulation)"/> 
+    <arg name="fixed_base"    value="$(arg fixed_base)"/> 
+  </include>
+
+  <!-- Load PIDs  && Load HAL description -->
+  <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator_parameters.launch">
+    <arg name="robot" value="$(arg robot)" />
+  </include>
+
+  <!-- default base pose -->
+  <rosparam command="load" file="$(find kangaroo_pal_physics_simulator)/config/default_configuration.yaml" />
+
+  <!-- Launch simulation -->
+  <include file="$(find pal_physics_simulator)/launch/pal_physics_simulator_parameters.launch">
+    <arg name="fixed_base"  value="false"/>
+    <arg name="dt"          value="$(arg dt)"/>
+  </include>
+
+  <include file="$(find pal_physics_simulator)/launch/pal_physics_simulator.launch">
+    <arg name="debug"           value="$(arg debug)"/>
+    <arg name="valgrind"        value="$(arg valgrind)"/>
+    <arg name="world_file_name" value="$(arg world)"/>
+  </include>
+
+  <!-- Spawn bringup controllers -->
+  <include file="$(find kangaroo_bringup)/launch/kangaroo_bringup.launch" />
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find kangaroo_pal_physics_simulator)/config/rviz/pal_physics_simulator.rviz" />
+
+</launch>

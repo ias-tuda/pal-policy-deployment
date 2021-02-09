@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="robot" default="full" />
+
+  <!-- Load pids -->
+  <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
+    <arg name="robot"   value="$(arg robot)" />
+    <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/pids/" />
+  </include>
+
+  <!-- Load HAL description -->
+  <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
+    <arg name="robot"   value="$(arg robot)" />
+    <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/sensors/" />
+  </include>
+</launch>
