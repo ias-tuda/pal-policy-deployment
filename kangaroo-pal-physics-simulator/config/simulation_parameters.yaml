@@ -1,0 +1,2 @@
+parameters:
+    self_collisions_handling: IGNORE

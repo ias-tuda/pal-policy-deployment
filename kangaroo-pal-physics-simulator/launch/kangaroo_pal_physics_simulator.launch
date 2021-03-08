@@ -31,6 +31,9 @@
     <arg name="dt"          value="$(arg dt)"/>
   </include>
 
+  <!-- Simulation Parameters -->
+  <rosparam command="load" file="$(find kangaroo_pal_physics_simulator)/config/simulation_parameters.yaml" ns="simulator" />
+
   <include file="$(find pal_physics_simulator)/launch/pal_physics_simulator.launch">
     <arg name="debug"           value="$(arg debug)"/>
     <arg name="valgrind"        value="$(arg valgrind)"/>
