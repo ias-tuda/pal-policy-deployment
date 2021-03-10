@@ -18,9 +18,7 @@
   </include>
 
   <!-- Load PIDs  && Load HAL description -->
-  <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator_parameters.launch">
-    <arg name="robot" value="$(arg robot)" />
-  </include>
+  <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator_parameters.launch"/>
 
   <!-- default base pose -->
   <rosparam command="load" file="$(find kangaroo_pal_physics_simulator)/config/default_configuration.yaml" />
