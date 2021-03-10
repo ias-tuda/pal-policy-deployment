@@ -4,7 +4,6 @@
   <arg name="debug"         default="false"/>
   <arg name="valgrind"      default="false"/>
   <arg name="dt"            default="0.0005"/>
-  <arg name="robot"         default="full"/>
   <arg name="enable_crane"  default="false"/> 
   <arg name="simulation"    default="false"/>
   <arg name="fixed_base"    default="false"/>
