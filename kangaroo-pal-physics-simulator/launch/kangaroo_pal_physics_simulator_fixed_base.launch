@@ -6,6 +6,9 @@
 
   <!-- Load Kangaroo description with no grippers -->
   <include file="$(find kangaroo_description)/robots/upload.launch">
+    <arg name="enable_crane"  value="False"/> 
+    <arg name="simulation"    value="False"/> 
+    <arg name="fixed_base"    value="True"/> 
   </include>
 
   <!-- Load pids  && Load HAL description -->
