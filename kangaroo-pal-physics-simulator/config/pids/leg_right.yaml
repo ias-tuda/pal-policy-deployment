@@ -1,7 +1,7 @@
 gains:
-  leg_right_1_joint: {p: 1000,  d: 10, i: 0, i_clamp: 50, torque_clamp: 50}
+  leg_right_1_joint: {p: 5000,  d: 10, i: 0, i_clamp: 50, torque_clamp: 50}
   leg_right_2_joint: {p: 5000,  d: 0, i: 0, i_clamp: 50, torque_clamp: 50}
-  leg_right_3_joint: {p: 1000,  d: 10, i: 0, i_clamp: 50, torque_clamp: 50}
-  leg_right_length_joint: {p: 50000,  d: 50, i: 0, i_clamp: 50, torque_clamp: 50}
-  leg_right_4_joint: {p: 1000, d: 0, i: 0, i_clamp: 10, torque_clamp: 50}
-  leg_right_5_joint: {p: 1000, d: 0, i: 0, i_clamp: 10, torque_clamp: 50}
+  leg_right_3_joint: {p: 10000,  d: 100, i: 0, i_clamp: 50, torque_clamp: 50}
+  leg_right_length_joint: {p: 100000,  d: 100, i: 0, i_clamp: 50, torque_clamp: 50}
+  leg_right_4_joint: {p: 5000, d: 0, i: 0, i_clamp: 10, torque_clamp: 50}
+  leg_right_5_joint: {p: 5000, d: 0, i: 0, i_clamp: 10, torque_clamp: 50}
