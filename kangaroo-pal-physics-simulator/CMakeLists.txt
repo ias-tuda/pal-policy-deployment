@@ -1,7 +1,12 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(kangaroo_pal_physics_simulator)
 
-find_package(catkin REQUIRED)
+find_package(catkin REQUIRED
+             roscpp
+             sensor_msgs
+             pal_utils
+             pal_ariles
+             kangaroo_leg_specifics)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -15,9 +20,12 @@ catkin_package(
 )
 
 include_directories(
-# include
-#  ${catkin_INCLUDE_DIRS}
+  SYSTEM
+  ${catkin_INCLUDE_DIRS}
 )
+
+add_executable(extended_joint_states_publisher_node src/extended_joint_states_publisher_node.cpp)
+target_link_libraries(extended_joint_states_publisher_node ${catkin_LIBRARIES})
 
 #############
 ## Install ##
