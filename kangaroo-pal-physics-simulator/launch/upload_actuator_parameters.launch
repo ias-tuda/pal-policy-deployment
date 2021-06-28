@@ -22,14 +22,14 @@
   <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
     <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
     <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
-    <arg name="joint_name"               value="leg_left_2_joint"/>
+    <arg name="joint_name"               value="leg_left_3_joint"/>
     <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
   </include>
 
   <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
     <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
     <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
-    <arg name="joint_name"               value="leg_left_3_joint"/>
+    <arg name="joint_name"               value="leg_left_length_joint"/>
     <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
   </include>
 
@@ -47,32 +47,11 @@
     <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
   </include>
 
-  <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
-    <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
-    <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
-    <arg name="joint_name"               value="leg_left_6_joint"/>
-    <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
-  </include>
-
-  <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
-    <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
-    <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
-    <arg name="joint_name"               value="leg_left_7_joint"/>
-    <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
-  </include>
-   
   <!-- Right Leg -->
   <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
     <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
     <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
     <arg name="joint_name"               value="leg_right_1_joint"/>
-    <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
-  </include>
-
-  <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
-    <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
-    <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
-    <arg name="joint_name"               value="leg_right_2_joint"/>
     <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
   </include>
 
@@ -93,6 +72,13 @@
   <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
     <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
     <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
+    <arg name="joint_name"               value="leg_right_length_joint"/>
+    <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
+  </include>
+
+  <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
+    <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
+    <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
     <arg name="joint_name"               value="leg_right_4_joint"/>
     <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
   </include>
@@ -101,20 +87,6 @@
     <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
     <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
     <arg name="joint_name"               value="leg_right_5_joint"/>
-    <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
-  </include>
-
-  <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
-    <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
-    <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
-    <arg name="joint_name"               value="leg_right_6_joint"/>
-    <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
-  </include>
-
-  <include file="$(find pal_physics_simulator)/launch/actuator/upload_actuator.launch">
-    <arg name="simulator_ns"             value="$(arg simulator_ns)"/>
-    <arg name="controller_pkg_name"      value="$(arg controller_pkg_name)"/>
-    <arg name="joint_name"               value="leg_right_7_joint"/>
     <arg name="actuator_simulation_type" value="pal_local_joint_control::SimulatedElasticJoint"/>
   </include>
 
