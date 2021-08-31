@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.1 (2021-08-31)
+------------------
 * clean the upload actuator parameters launch file
 * added extended joint states publisher node
 * tune the PID gains of both legs for the functionality of walking controller in position
