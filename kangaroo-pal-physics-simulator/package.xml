@@ -18,6 +18,7 @@
   <depend>pal_utils</depend>
   <depend>pal_ariles</depend>
   <depend>kangaroo_leg_specifics</depend>
+  <depend>pal_geometry_tools</depend>
   <exec_depend>kangaroo_controller_configuration</exec_depend>
   <exec_depend>kangaroo_description</exec_depend>
   <exec_depend>kangaroo_leg_test_bench_description</exec_depend>
