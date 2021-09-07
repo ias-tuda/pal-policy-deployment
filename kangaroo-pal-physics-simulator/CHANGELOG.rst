@@ -2,6 +2,11 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* added pal_geometry_tools depedency
+* Contributors: Sai Kishor Kothakota
+
 0.0.1 (2021-08-31)
 ------------------
 * clean the upload actuator parameters launch file
