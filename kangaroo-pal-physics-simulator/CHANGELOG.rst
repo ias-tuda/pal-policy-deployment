@@ -2,6 +2,11 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* add pal_geometry_tools to the catkin components
+* Contributors: Sai Kishor Kothakota
+
 0.0.2 (2021-09-07)
 ------------------
 * added pal_geometry_tools depedency
