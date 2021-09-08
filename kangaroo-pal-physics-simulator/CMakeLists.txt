@@ -6,7 +6,8 @@ find_package(catkin REQUIRED
              sensor_msgs
              pal_utils
              pal_ariles
-             kangaroo_leg_specifics)
+             kangaroo_leg_specifics
+             pal_geometry_tools)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
