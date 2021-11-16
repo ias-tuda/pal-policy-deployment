@@ -93,6 +93,18 @@ void KangarooPhysicsSimulator::computeInverseGeneralizedInertia(Eigen::MatrixXd 
 
   if (fixed_links_size == 0)
   {
+    // -----
+    // inversion
+    /*
+     * matrix MJ:
+     *   | M      -J_R_l^T -J_R_r^T|
+     *   | -J_R_l    0        0    |
+     *   | -J_R_r    0        0    |
+     *
+     *  M - The generalized inertia matrix
+     *  J_R_l - The relative jacobian of the kangaroo left leg
+     *  J_R_r - The relative jacobian of the kangaroo right leg
+     */
     Eigen::MatrixXd MJ;
     MJ.resize(
         dynamic_model_.getDOFNumber() + rel_jacobian_left.rows() + rel_jacobian_right.rows(),
@@ -154,23 +166,43 @@ void KangarooPhysicsSimulator::computeInverseGeneralizedInertia(Eigen::MatrixXd 
     // inversion
     /*
      * matrix MJ:
-     *   | M   -Jf^T |
-     *   | -Jf   0   |
+     *   | M      -J_R_l^T -J_R_r^T  -Jf^T |
+     *   | -J_R_l    0        0        0   |
+     *   | -J_R_r    0        0        0   |
+     *   | -Jf       0        0        0   |
      *
      *  M - The generalized inertia matrix
+     *  J_R_l - The relative jacobian of the kangaroo left leg
+     *  J_R_r - The relative jacobian of the kangaroo right leg
      *  Jf - The jacobian of the fixed links
      */
-    std::size_t kangaroo_jacobian_size = rel_jacobian_right.rows() + rel_jacobian_left.rows();
+    const std::size_t kangaroo_jacobian_size =
+        rel_jacobian_right.rows() + rel_jacobian_left.rows();
     Eigen::MatrixXd MJ;
     MJ.resize(dynamic_model_.getDOFNumber() + jacobian.rows() + kangaroo_jacobian_size,
               dynamic_model_.getDOFNumber() + jacobian.rows() + kangaroo_jacobian_size);
 
     MJ.topLeftCorner(dynamic_model_.getDOFNumber(), dynamic_model_.rbdl_model_.dof_count) =
         generalized_inertia_;
-    MJ.bottomRightCorner(jacobian.rows(), jacobian.rows()).setZero();
+    MJ.bottomRightCorner(kangaroo_jacobian_size + jacobian.rows(),
+                         kangaroo_jacobian_size + jacobian.rows())
+        .setZero();
 
-    MJ.bottomLeftCorner(jacobian.rows(), dynamic_model_.getDOFNumber()) = jacobian;
-    MJ.topRightCorner(dynamic_model_.getDOFNumber(), jacobian.rows()) = jacobian.transpose();
+    MJ.block(dynamic_model_.getDOFNumber(), 0, rel_jacobian_left.rows(),
+             dynamic_model_.getDOFNumber()) = -rel_jacobian_left;
+    MJ.block(dynamic_model_.getDOFNumber() + rel_jacobian_left.rows(), 0,
+             rel_jacobian_right.rows(), dynamic_model_.getDOFNumber()) = -rel_jacobian_right;
+
+    MJ.block(dynamic_model_.getDOFNumber() + kangaroo_jacobian_size, 0, jacobian.rows(),
+             dynamic_model_.getDOFNumber()) = -jacobian;
+
+    MJ.block(0, dynamic_model_.rbdl_model_.dof_count, dynamic_model_.getDOFNumber(),
+             rel_jacobian_left.rows()) = -rel_jacobian_left.transpose();
+    MJ.block(0, dynamic_model_.rbdl_model_.dof_count + rel_jacobian_left.rows(),
+             dynamic_model_.getDOFNumber(), rel_jacobian_right.rows()) =
+        -rel_jacobian_right.transpose();
+    MJ.block(0, dynamic_model_.rbdl_model_.dof_count + kangaroo_jacobian_size,
+             dynamic_model_.getDOFNumber(), jacobian.rows()) = -jacobian.transpose();
 
     inv_generalized_inertia = MJ.inverse().topLeftCorner(
         dynamic_model_.getDOFNumber(), dynamic_model_.rbdl_model_.dof_count);
