@@ -64,68 +64,57 @@ void KangarooPhysicsSimulator::computeInverseGeneralizedInertia(Eigen::MatrixXd 
   relative_jac.resize(6, dynamic_model_.getDOFNumber());
   rel_jacobian_left.resize(2, dynamic_model_.getDOFNumber());
   rel_jacobian_right.resize(2, dynamic_model_.getDOFNumber());
-  if (is_kangaroo_)
-  {
-    generalized_effort(dynamic_model_.getJointIndex("leg_left_knee_joint") + 6) = 0.0;
-    generalized_effort(dynamic_model_.getJointIndex("leg_left_femur_joint") + 6) = 0.0;
-    generalized_effort(dynamic_model_.getJointIndex("leg_right_knee_joint") + 6) = 0.0;
-    generalized_effort(dynamic_model_.getJointIndex("leg_right_femur_joint") + 6) = 0.0;
+  generalized_effort(dynamic_model_.getJointIndex("leg_left_knee_joint") + 6) = 0.0;
+  generalized_effort(dynamic_model_.getJointIndex("leg_left_femur_joint") + 6) = 0.0;
+  generalized_effort(dynamic_model_.getJointIndex("leg_right_knee_joint") + 6) = 0.0;
+  generalized_effort(dynamic_model_.getJointIndex("leg_right_femur_joint") + 6) = 0.0;
 
-    // Formulating the relative jacobian
-    const unsigned int a_left_frame =
-        dynamic_model_.rbdl_model_.GetBodyId("leg_left_length_link");
-    const unsigned int u_left_frame =
-        dynamic_model_.rbdl_model_.GetBodyId("leg_left_knee_lower_bearing");
-    const unsigned int a_right_frame =
-        dynamic_model_.rbdl_model_.GetBodyId("leg_right_length_link");
-    const unsigned int u_right_frame =
-        dynamic_model_.rbdl_model_.GetBodyId("leg_right_knee_lower_bearing");
-    this->computeRelativeJacobian(dynamic_model_state_.generalized_coordinates_,
-                                  a_left_frame, u_left_frame, relative_jac, false);
-    rel_jacobian_left.block(0, 0, 1, dynamic_model_.getDOFNumber()) =
-        relative_jac.block(3, 0, 1, dynamic_model_.getDOFNumber());
-    rel_jacobian_left.block(1, 0, 1, dynamic_model_.getDOFNumber()) =
-        relative_jac.block(5, 0, 1, dynamic_model_.getDOFNumber());
+  // Formulating the relative jacobian
+  const unsigned int a_left_frame = dynamic_model_.rbdl_model_.GetBodyId("leg_left_length_link");
+  const unsigned int u_left_frame =
+      dynamic_model_.rbdl_model_.GetBodyId("leg_left_knee_lower_bearing");
+  const unsigned int a_right_frame =
+      dynamic_model_.rbdl_model_.GetBodyId("leg_right_length_link");
+  const unsigned int u_right_frame =
+      dynamic_model_.rbdl_model_.GetBodyId("leg_right_knee_lower_bearing");
+  this->computeRelativeJacobian(dynamic_model_state_.generalized_coordinates_,
+                                a_left_frame, u_left_frame, relative_jac, false);
+  rel_jacobian_left.block(0, 0, 1, dynamic_model_.getDOFNumber()) =
+      relative_jac.block(3, 0, 1, dynamic_model_.getDOFNumber());
+  rel_jacobian_left.block(1, 0, 1, dynamic_model_.getDOFNumber()) =
+      relative_jac.block(5, 0, 1, dynamic_model_.getDOFNumber());
 
-    this->computeRelativeJacobian(dynamic_model_state_.generalized_coordinates_,
-                                  a_right_frame, u_right_frame, relative_jac, false);
-    rel_jacobian_right.block(0, 0, 1, dynamic_model_.getDOFNumber()) =
-        relative_jac.block(3, 0, 1, dynamic_model_.getDOFNumber());
-    rel_jacobian_right.block(1, 0, 1, dynamic_model_.getDOFNumber()) =
-        relative_jac.block(5, 0, 1, dynamic_model_.getDOFNumber());
-  }
+  this->computeRelativeJacobian(dynamic_model_state_.generalized_coordinates_,
+                                a_right_frame, u_right_frame, relative_jac, false);
+  rel_jacobian_right.block(0, 0, 1, dynamic_model_.getDOFNumber()) =
+      relative_jac.block(3, 0, 1, dynamic_model_.getDOFNumber());
+  rel_jacobian_right.block(1, 0, 1, dynamic_model_.getDOFNumber()) =
+      relative_jac.block(5, 0, 1, dynamic_model_.getDOFNumber());
+
   if (fixed_links_size == 0)
   {
-    if (is_kangaroo_)
-    {
-      Eigen::MatrixXd MJ;
-      MJ.resize(dynamic_model_.getDOFNumber() + rel_jacobian_left.rows() +
-                    rel_jacobian_right.rows(),
-                dynamic_model_.getDOFNumber() + rel_jacobian_left.rows() +
-                    rel_jacobian_right.rows());
+    Eigen::MatrixXd MJ;
+    MJ.resize(
+        dynamic_model_.getDOFNumber() + rel_jacobian_left.rows() + rel_jacobian_right.rows(),
+        dynamic_model_.getDOFNumber() + rel_jacobian_left.rows() + rel_jacobian_right.rows());
 
-      MJ.topLeftCorner(dynamic_model_.getDOFNumber(), dynamic_model_.rbdl_model_.dof_count) =
-          generalized_inertia_;
-      MJ.bottomRightCorner(rel_jacobian_left.rows() + rel_jacobian_right.rows(),
-                           rel_jacobian_left.rows() + rel_jacobian_right.rows())
-          .setZero();
+    MJ.topLeftCorner(dynamic_model_.getDOFNumber(), dynamic_model_.rbdl_model_.dof_count) =
+        generalized_inertia_;
+    MJ.bottomRightCorner(rel_jacobian_left.rows() + rel_jacobian_right.rows(),
+                         rel_jacobian_left.rows() + rel_jacobian_right.rows())
+        .setZero();
 
-      MJ.block(dynamic_model_.getDOFNumber(), 0, rel_jacobian_left.rows(),
-               dynamic_model_.getDOFNumber()) = -rel_jacobian_left;
-      MJ.block(dynamic_model_.getDOFNumber() + rel_jacobian_left.rows(), 0,
-               rel_jacobian_right.rows(), dynamic_model_.getDOFNumber()) = -rel_jacobian_right;
-      MJ.block(0, dynamic_model_.rbdl_model_.dof_count, dynamic_model_.getDOFNumber(),
-               rel_jacobian_left.rows()) = -rel_jacobian_left.transpose();
-      MJ.block(0, dynamic_model_.rbdl_model_.dof_count + rel_jacobian_left.rows(),
-               dynamic_model_.getDOFNumber(), rel_jacobian_right.rows()) =
-          -rel_jacobian_right.transpose();
-      inv_generalized_inertia = MJ.inverse().topLeftCorner(
-          dynamic_model_.getDOFNumber(), dynamic_model_.rbdl_model_.dof_count);
-    }
-    else
-    {
-      inv_generalized_inertia = generalized_inertia_.inverse();
-    }
+    MJ.block(dynamic_model_.getDOFNumber(), 0, rel_jacobian_left.rows(),
+             dynamic_model_.getDOFNumber()) = -rel_jacobian_left;
+    MJ.block(dynamic_model_.getDOFNumber() + rel_jacobian_left.rows(), 0,
+             rel_jacobian_right.rows(), dynamic_model_.getDOFNumber()) = -rel_jacobian_right;
+    MJ.block(0, dynamic_model_.rbdl_model_.dof_count, dynamic_model_.getDOFNumber(),
+             rel_jacobian_left.rows()) = -rel_jacobian_left.transpose();
+    MJ.block(0, dynamic_model_.rbdl_model_.dof_count + rel_jacobian_left.rows(),
+             dynamic_model_.getDOFNumber(), rel_jacobian_right.rows()) =
+        -rel_jacobian_right.transpose();
+    inv_generalized_inertia = MJ.inverse().topLeftCorner(
+        dynamic_model_.getDOFNumber(), dynamic_model_.rbdl_model_.dof_count);
   }
   else
   {
@@ -171,11 +160,7 @@ void KangarooPhysicsSimulator::computeInverseGeneralizedInertia(Eigen::MatrixXd 
      *  M - The generalized inertia matrix
      *  Jf - The jacobian of the fixed links
      */
-    std::size_t kangaroo_jacobian_size = 0;
-    if (is_kangaroo_)
-    {
-      kangaroo_jacobian_size = rel_jacobian_right.rows();
-    }
+    std::size_t kangaroo_jacobian_size = rel_jacobian_right.rows() + rel_jacobian_left.rows();
     Eigen::MatrixXd MJ;
     MJ.resize(dynamic_model_.getDOFNumber() + jacobian.rows() + kangaroo_jacobian_size,
               dynamic_model_.getDOFNumber() + jacobian.rows() + kangaroo_jacobian_size);
