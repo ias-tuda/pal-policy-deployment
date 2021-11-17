@@ -41,6 +41,18 @@ target_link_libraries(extended_joint_states_publisher_node ${catkin_LIBRARIES})
 ## Install ##
 #############
 
+install(
+    TARGETS ${PROJECT_NAME} extended_joint_states_publisher_node
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+    )
+
+install(DIRECTORY include/
+    DESTINATION ${CATKIN_GLOBAL_INCLUDE_DESTINATION}
+    FILES_MATCHING PATTERN "*.h*"
+    )
+
 install(DIRECTORY launch config
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
