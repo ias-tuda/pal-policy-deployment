@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.4 (2021-11-17)
+------------------
 * Merge branch 'closed_kinematic_chains' into 'master'
   added the KangarooPhysicsSimulator class and export it as plugin
   See merge request control/kangaroo_pal_physics_simulator!2
