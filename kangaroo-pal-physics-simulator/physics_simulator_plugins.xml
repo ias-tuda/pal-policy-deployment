@@ -1,0 +1,10 @@
+<library path="lib/libkangaroo_pal_physics_simulator">
+
+  <class name="pal_physics_simulator::KangarooPhysicsSimulator" type="pal_physics_simulator::KangarooPhysicsSimulator" base_class_type="pal_physics_simulator::PhysicsSimulatorBase">
+    <description>
+      Kangaroo PAL physics simulator plugin
+    </description>
+  </class>
+
+</library>
+

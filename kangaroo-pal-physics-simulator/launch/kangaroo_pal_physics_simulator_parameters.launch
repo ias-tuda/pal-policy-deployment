@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
 
+  <arg name="pids" default="pids"/>
+
   <!-- Load pids -->
   <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
-    <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/pids/" />
+    <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/$(arg pids)/" />
   </include>
 
   <!-- Load HAL description -->

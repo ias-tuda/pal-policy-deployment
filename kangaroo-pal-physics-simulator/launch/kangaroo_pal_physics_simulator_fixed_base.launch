@@ -11,16 +11,15 @@
     <arg name="fixed_base"    value="True"/> 
   </include>
 
-  <!-- Load pids  && Load HAL description -->
-  <!-- Load pids -->
-  <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
-    <arg name="robot"   value="full" />
-    <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/pids/" />
+  <!-- Load PIDs  && Load HAL description -->
+  <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator_parameters.launch">
+    <arg name="pids"  value="pids_fixed_base" />
   </include>
 
   <!-- Launch simulation -->
   <include file="$(find pal_physics_simulator)/launch/pal_physics_simulator_parameters.launch">
     <arg name="fixed_base" value="true"/>
+    <arg name="type"        value="pal_physics_simulator::KangarooPhysicsSimulator"/>
   </include>
 
   <include file="$(find pal_physics_simulator)/launch/pal_physics_simulator.launch">

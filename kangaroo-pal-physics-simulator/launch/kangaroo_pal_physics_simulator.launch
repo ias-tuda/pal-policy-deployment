@@ -23,6 +23,7 @@
   <include file="$(find pal_physics_simulator)/launch/pal_physics_simulator_parameters.launch">
     <arg name="fixed_base"  value="false"/>
     <arg name="dt"          value="$(arg dt)"/>
+    <arg name="type"        value="pal_physics_simulator::KangarooPhysicsSimulator"/>
   </include>
 
   <include file="$(find pal_physics_simulator)/launch/pal_physics_simulator.launch">
