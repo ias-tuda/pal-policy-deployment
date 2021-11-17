@@ -2,6 +2,20 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'closed_kinematic_chains' into 'master'
+  added the KangarooPhysicsSimulator class and export it as plugin
+  See merge request control/kangaroo_pal_physics_simulator!2
+* added missing install rules
+* fix the launch files to use type and get pid gains argument
+* added fixed base PID gains for all joints
+* correct the formulations and finish the formulation of the fixed links inverse generalized inertia computation
+* parse the right simulator type through launch files
+* code cleanup for the new changes in the pal_physics_simulator
+* added the KangarooPhysicsSimulator class and export it as plugin
+* Contributors: Adria Roig, Sai Kishor Kothakota
+
 0.0.3 (2021-09-08)
 ------------------
 * add pal_geometry_tools to the catkin components
