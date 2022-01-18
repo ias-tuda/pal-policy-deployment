@@ -1,0 +1,9 @@
+<library path="lib/libsubscriber_controller">
+  
+  <class name="subscriber_controller::SubscriberController" type="subscriber_controller::SubscriberController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      Controller that receives the desired state using a Subscriber and that publishes the actual one.
+    </description>
+  </class>
+
+</library>
