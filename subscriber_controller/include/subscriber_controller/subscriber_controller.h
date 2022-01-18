@@ -17,16 +17,16 @@
 #include <sensor_msgs/JointState.h>
 #include <pluginlib/class_list_macros.hpp>
 
-namespace subscriber_controller {
-class SubscriberController
-    : public pal_base_ros_controller::BaseRobotWithEsimatorController {
+namespace subscriber_controller
+{
+class SubscriberController : public pal_base_ros_controller::BaseRobotWithEsimatorController
+{
 public:
   // Load controller (NON RT)
   bool loadEtras(ros::NodeHandle &control_nh) override;
 
   // Control loop (RT)
-  void updateExtras(const ros::Time &time,
-                    const ros::Duration &period) override;
+  void updateExtras(const ros::Time &time, const ros::Duration &period) override;
 
   // First time control loop (RT)
   void startingExtras(const ros::Time &time) override;
@@ -60,10 +60,8 @@ private:
   double d_leg_gain_;
 
   // Real time publishers
-  boost::shared_ptr<realtime_tools::RealtimePublisher<sensor_msgs::JointState>>
-      joint_states_pub_;
-  boost::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry>>
-      base_state_pub_;
+  boost::shared_ptr<realtime_tools::RealtimePublisher<sensor_msgs::JointState>> joint_states_pub_;
+  boost::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry>> base_state_pub_;
 
   // ROS msgs
   sensor_msgs::JointState actual_js_state_;
@@ -87,4 +85,4 @@ private:
 PLUGINLIB_EXPORT_CLASS(subscriber_controller::SubscriberController,
                        controller_interface::ControllerBase);
 
-#endif // SUBSCRIBER_CONTROLLER_H
+#endif  // SUBSCRIBER_CONTROLLER_H
