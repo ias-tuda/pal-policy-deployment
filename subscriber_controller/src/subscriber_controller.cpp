@@ -9,22 +9,21 @@
 
 #include <subscriber_controller/subscriber_controller.h>
 
-namespace subscriber_controller {
-
-bool SubscriberController::loadEtras(ros::NodeHandle &control_nh) {
+namespace subscriber_controller
+{
+bool SubscriberController::loadEtras(ros::NodeHandle &control_nh)
+{
   // Create real time publishers to publish the actial state
   ros::TransportHints hints;
   hints.tcpNoDelay(true);
-  joint_states_pub_.reset(
-      new realtime_tools::RealtimePublisher<sensor_msgs::JointState>(
-          control_nh, "actual_js_state", 1));
-  base_state_pub_.reset(
-      new realtime_tools::RealtimePublisher<nav_msgs::Odometry>(
-          control_nh, "actual_base_state", 1));
+  joint_states_pub_.reset(new realtime_tools::RealtimePublisher<sensor_msgs::JointState>(
+      control_nh, "actual_js_state", 1));
+  base_state_pub_.reset(new realtime_tools::RealtimePublisher<nav_msgs::Odometry>(
+      control_nh, "actual_base_state", 1));
 
   // Create a simple subscriber (there are no RT subscribers)
-  state_sub_ = control_nh.subscribe(
-      "desired_state", 1, &SubscriberController::controlCb, this, hints);
+  state_sub_ =
+      control_nh.subscribe("desired_state", 1, &SubscriberController::controlCb, this, hints);
   actual_js_state_.name = getControlledJointNames();
 
   // Read the initial torques from the sensors
@@ -35,8 +34,10 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh) {
   a_initial_torque.resize(actual_js_state_.name.size());
   a_initial_position.resize(actual_js_state_.name.size());
 
-  while ((ros::Time::now() - start_time) < ros::Duration(1.0)) {
-    for (size_t i = 0; i < actual_js_state_.name.size(); i++) {
+  while ((ros::Time::now() - start_time) < ros::Duration(1.0))
+  {
+    for (size_t i = 0; i < actual_js_state_.name.size(); i++)
+    {
       a_initial_torque[i] += getJointMeasuredTorque(i);
       a_initial_position[i] += getActualJointPosition(i);
     }
@@ -44,7 +45,8 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh) {
     ros::Duration(0.01).sleep();
   }
 
-  for (size_t i = 0; i < actual_js_state_.name.size(); i++) {
+  for (size_t i = 0; i < actual_js_state_.name.size(); i++)
+  {
     initial_torque_.push_back(a_initial_torque[i] / double(samples));
     initial_position_.push_back(a_initial_position[i] / double(samples));
     desired_torque_.push_back(initial_torque_[i]);
@@ -57,11 +59,9 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh) {
 
   // Register variables in the introspection data topic
   REGISTER_VARIABLE("/introspection_data", "subscriber_time",
-                    tp_->getLastCycleTimePtr("subscriber"),
-                    &registered_variables_);
+                    tp_->getLastCycleTimePtr("subscriber"), &registered_variables_);
   REGISTER_VARIABLE("/introspection_data", "subscriber_periodicity",
-                    tp_->getPeriodicityPtr("subscriber"),
-                    &registered_variables_);
+                    tp_->getPeriodicityPtr("subscriber"), &registered_variables_);
 
   // Mutex time
   ms_mutex_ = getControllerDt().toSec() * 1000;
@@ -75,8 +75,7 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh) {
   d_leg_gain_ = 35.0;
 
   // Set the impedance gains a variables that can be configured online
-  dd_reconfigure_.reset(
-      new ddynamic_reconfigure::DDynamicReconfigure(control_nh));
+  dd_reconfigure_.reset(new ddynamic_reconfigure::DDynamicReconfigure(control_nh));
   dd_reconfigure_->RegisterVariable(&p_arm_gain_, "p_arm");
   dd_reconfigure_->RegisterVariable(&d_arm_gain_, "d_arm");
   dd_reconfigure_->RegisterVariable(&p_torso_gain_, "p_torso");
@@ -88,8 +87,8 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh) {
   return true;
 }
 
-void SubscriberController::updateExtras(const ros::Time &time,
-                                        const ros::Duration &period) {
+void SubscriberController::updateExtras(const ros::Time &time, const ros::Duration &period)
+{
   // Read actual values
   actual_js_state_.position = getActualJointPositions();
   actual_js_state_.velocity = getActualJointVelocities();
@@ -118,12 +117,14 @@ void SubscriberController::updateExtras(const ros::Time &time,
   actual_base_state_.pose.pose.orientation.w = base_orientation_.w();
 
   // Publish values using the RT publisher
-  if (joint_states_pub_->trylock()) {
+  if (joint_states_pub_->trylock())
+  {
     actual_js_state_.header.stamp = time;
     joint_states_pub_->msg_ = actual_js_state_;
     joint_states_pub_->unlockAndPublish();
   }
-  if (base_state_pub_->trylock()) {
+  if (base_state_pub_->trylock())
+  {
     actual_base_state_.header.stamp = time;
     base_state_pub_->msg_ = actual_base_state_;
     base_state_pub_->unlockAndPublish();
@@ -132,54 +133,63 @@ void SubscriberController::updateExtras(const ros::Time &time,
   // Try to lock the desired state using a mutex.
   std::unique_lock<std::timed_mutex> lock(mutex_, std::try_to_lock);
   // If locked and desired state received
-  if (lock.owns_lock() && (!desired_state_.name.empty())) {
-    for (size_t i = 1; i < desired_state_.name.size(); i++) {
+  if (lock.owns_lock() && (!desired_state_.name.empty()))
+  {
+    for (size_t i = 1; i < desired_state_.name.size(); i++)
+    {
       setDesiredJointState(desired_state_.name[i], desired_state_.position[i],
-                           desired_state_.velocity[i], 0.,
-                           desired_state_.effort[i]);
+                           desired_state_.velocity[i], 0., desired_state_.effort[i]);
     }
     // If desired state haven't been received yet mantain the initial position
     // using impedance
-  } else if (desired_state_.name.empty()) {
-    for (size_t i = 0; i < actual_js_state_.name.size(); i++) {
+  }
+  else if (desired_state_.name.empty())
+  {
+    for (size_t i = 0; i < actual_js_state_.name.size(); i++)
+    {
       if (actual_js_state_.name[i].find("torso") != std::string::npos)
         desired_torque_[i] =
             initial_torque_[i] -
             p_torso_gain_ * (getActualJointPosition(i) - initial_position_[i]) -
             d_torso_gain_ * getActualJointVelocity(i);
       else if (actual_js_state_.name[i].find("arm") != std::string::npos)
-        desired_torque_[i] =
-            initial_torque_[i] -
-            p_arm_gain_ * (getActualJointPosition(i) - initial_position_[i]) -
-            d_arm_gain_ * getActualJointVelocity(i);
+        desired_torque_[i] = initial_torque_[i] -
+                             p_arm_gain_ * (getActualJointPosition(i) - initial_position_[i]) -
+                             d_arm_gain_ * getActualJointVelocity(i);
       else
-        desired_torque_[i] =
-            initial_torque_[i] -
-            p_leg_gain_ * (getActualJointPosition(i) - initial_position_[i]) -
-            d_leg_gain_ * getActualJointVelocity(i);
-      setDesiredJointState(actual_js_state_.name[i], initial_position_[i], 0.,
-                           0., desired_torque_[i]);
+        desired_torque_[i] = initial_torque_[i] -
+                             p_leg_gain_ * (getActualJointPosition(i) - initial_position_[i]) -
+                             d_leg_gain_ * getActualJointVelocity(i);
+      setDesiredJointState(actual_js_state_.name[i], initial_position_[i], 0., 0.,
+                           desired_torque_[i]);
     }
-  } else {
+  }
+  else
+  {
     ROS_WARN("Skipping received state");
   }
 }
 
-void SubscriberController::startingExtras(const ros::Time &time) {}
+void SubscriberController::startingExtras(const ros::Time &time)
+{
+}
 
-void SubscriberController::stoppingExtra(const ros::Time &time) {
-  for (size_t i = 0; i < getControlledJointNames().size(); ++i) {
+void SubscriberController::stoppingExtra(const ros::Time &time)
+{
+  for (size_t i = 0; i < getControlledJointNames().size(); ++i)
+  {
     setDesiredJointState(i, getActualJointPosition(i), 0., 0., 0.);
   }
 }
 
-void SubscriberController::controlCb(
-    const sensor_msgs::JointStateConstPtr &desired_state) {
+void SubscriberController::controlCb(const sensor_msgs::JointStateConstPtr &desired_state)
+{
   // Start subscriber timer
   tp_->startTimer("subscriber");
   // Try to lock desired_state recursively using mutex to set the desired state
   std::unique_lock<std::timed_mutex> lock(mutex_, std::defer_lock);
-  if (lock.try_lock_for(std::chrono::milliseconds(ms_mutex_))) {
+  if (lock.try_lock_for(std::chrono::milliseconds(ms_mutex_)))
+  {
     desired_state_ = *desired_state;
   }
   // Stop subsciber timer

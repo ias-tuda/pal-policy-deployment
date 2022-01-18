@@ -111,7 +111,8 @@ public:
 
     ddr_.reset(new ddynamic_reconfigure::DDynamicReconfigure(nh));
     ddr_->RegisterVariable(&pos_step_, "/trajectory_publisher_pos_step", 0.0, 1.e-2);
-    ddr_->RegisterVariable(&joint_limit_tolerance_, "/trajectory_publisher_limits_tolerance", 0.1, 0.5);
+    ddr_->RegisterVariable(&joint_limit_tolerance_,
+                           "/trajectory_publisher_limits_tolerance", 0.1, 0.5);
     ddr_->PublishServicesTopics();
 
     desired_joint_pos_ = actual_joint_state_->position[controlled_joint_id_];
