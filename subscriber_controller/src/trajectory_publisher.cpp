@@ -20,12 +20,6 @@
 
 namespace subscriber_controller
 {
-struct ActuatorParameters
-{
-  double motor_torque_constant = 0.0;
-  double reduction_ratio = 0.0;
-};
-
 class TrajectoryPublisher
 {
 public:
@@ -43,8 +37,8 @@ public:
     std::vector<double> joint_max_effort;
 
     RigidBodyDynamics::Addons::URDFReadFromParamServer(
-        &rbdl_model_, RigidBodyDynamics::FloatingBaseType::FixedBase,
-        joint_names, joint_position_min, joint_position_max, joint_vel_min, joint_vel_max,
+        &rbdl_model_, RigidBodyDynamics::FloatingBaseType::FixedBase, joint_names,
+        joint_position_min, joint_position_max, joint_vel_min, joint_vel_max,
         joint_damping, joint_friction, joint_max_effort);
 
     state_sub_js_ = nh.subscribe("actual_js_state", 1, &TrajectoryPublisher::StateCb, this);
@@ -94,41 +88,6 @@ public:
       model_joint_id_ = std::distance(joint_names.begin(), it);
     }
 
-    if (!nh.getParam("joints/" + controlled_joint_name + "/actuator_params/motor_torque_constant",
-                     actuator_parameters_.motor_torque_constant))
-    {
-      ROS_ERROR_STREAM("Could not find motor torque constant for joint " << controlled_joint_name);
-      return false;
-    }
-    if (!nh.getParam("joints/" + controlled_joint_name + "/actuator_params/reduction_ratio",
-                     actuator_parameters_.reduction_ratio))
-    {
-      ROS_ERROR_STREAM("Could not find reduction ratio for joint " << controlled_joint_name);
-      return false;
-    }
-
-    q_act_.resize(joint_names.size());
-    q_zero_.resize(joint_names.size());
-    tau_cmd_.resize(joint_names.size());
-
-    q_act_.setZero();
-    q_zero_.setZero();
-    tau_cmd_.setZero();
-
-    for(size_t i = 0; i < joints_state_.name.size(); i++)
-    {
-      auto it = std::find(joint_names.begin(),
-                          joint_names.end(), joints_state_.name[i]);
-      if (it == joint_names.end())
-      {
-        ROS_ERROR_STREAM("Joint name " << joints_state_.name[i]
-                                             << " not detected in the model");
-        loaded_ = false;
-        return false;
-      }
-      map_controlled_model_.push_back(std::distance(joint_names.begin(), it));
-    }
-
     controlled_joint_limits_ = std::make_pair(joint_position_min[model_joint_id_],
                                               joint_position_max[model_joint_id_]);
 
@@ -147,12 +106,13 @@ public:
     loaded_ = true;
 
     pos_step_ = 5.e-3;
-    ddr_.reset(new ddynamic_reconfigure::DDynamicReconfigure(nh));
-    ddr_->RegisterVariable(&pos_step_, "/trajectory_publisher_pos_step", 0.0, 1.0);
-    ddr_->PublishServicesTopics();
-
     joint_limit_tolerance_ = 0.3;
     direction_ = 1.0;
+
+    ddr_.reset(new ddynamic_reconfigure::DDynamicReconfigure(nh));
+    ddr_->RegisterVariable(&pos_step_, "/trajectory_publisher_pos_step", 0.0, 1.e-2);
+    ddr_->RegisterVariable(&joint_limit_tolerance_, "/trajectory_publisher_limits_tolerance", 0.1, 0.5);
+    ddr_->PublishServicesTopics();
 
     desired_joint_pos_ = actual_joint_state_->position[controlled_joint_id_];
 
@@ -167,11 +127,6 @@ public:
       ROS_ERROR("Trajectory Publisher should be loaded first");
     }
 
-    for (size_t i = 0; i < joints_state_.name.size(); i++)
-    {
-      q_act_[map_controlled_model_[i]] = actual_joint_state_->position[i];
-    }
-
     desired_joint_pos_ += direction_ * pos_step_;
 
     if (desired_joint_pos_ < (controlled_joint_limits_.first + joint_limit_tolerance_) ||
@@ -181,21 +136,11 @@ public:
       desired_joint_pos_ += direction_ * pos_step_;
     }
 
-    q_act_[model_joint_id_] = desired_joint_pos_;
-
-    RigidBodyDynamics::InverseDynamics(rbdl_model_, q_act_, q_zero_, q_zero_, tau_cmd_);
-
-    double desired_joint_eff =
-        tau_cmd_[model_joint_id_] /
-        (actuator_parameters_.motor_torque_constant * actuator_parameters_.reduction_ratio);
-
-    if (state_pub_->trylock() && !std::isnan(desired_joint_eff))
+    if (state_pub_->trylock())
     {
       tp_->startTimer("publisher");
       joints_state_.header.stamp = ros::Time::now();
       joints_state_.position[controlled_joint_id_] = desired_joint_pos_;
-      ROS_ERROR_STREAM(desired_joint_eff);
-      joints_state_.effort[controlled_joint_id_] = desired_joint_eff;
       state_pub_->msg_ = joints_state_;
       state_pub_->unlockAndPublish();
       ROS_INFO_STREAM("State published ");
@@ -253,21 +198,13 @@ protected:
   double pos_step_;
   double direction_;
   double desired_joint_pos_;
-
-  Eigen::VectorXd q_act_;
-  Eigen::VectorXd q_zero_;
-  Eigen::VectorXd tau_cmd_;
-
-  std::vector<unsigned int> map_controlled_model_;
-
-  ActuatorParameters actuator_parameters_;
 };
 }
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "trajectory_publisher");
-  ros::NodeHandle nh("subscriber_controller");
+  ros::init(argc, argv, "subscriber_controller");
+  ros::NodeHandle nh("~");
   double dt = 0.01;
   ROS_INFO_STREAM("Trajectory publisher dt is: " << dt);
 
