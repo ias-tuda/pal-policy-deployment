@@ -2,7 +2,7 @@
 
 This example was developed for the [Memmo project](https://www.memmo-project.eu/) to run the MPC controller in a separate, isolated, and more powerful PC. 
 
-The subscriber controller is a ROS controller that runs at 2Khz. It publishes the actual state of the robot `actual_base_state`, `actual_js_state` and sends the joint references received from an external publisher. If no references are received, it sends the previous one. 
+The subscriber controller is a ROS controller that runs at 2Khz. It publishes the actual state of the robot `actual_base_state`, `actual_js_state` and sends the reference received by an external publisher to the motors. 
 
 At the beginning, when no references are received, it reads the actual state of the robot and tries to mantain it using either position control or impedance control, depending on the control mode.
 
