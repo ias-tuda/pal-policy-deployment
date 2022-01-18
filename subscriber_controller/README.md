@@ -9,11 +9,11 @@ If no reference is received, it sends the previous one.
 At the beginning, when no references have been yet received, it reads the actual state of the robot and tries to mantain it using either position control or impedance control, depending on the control mode.
 
 This controller could be started with the different local control modes developed by PAL:
-- *InertiaShapingEffortAnalyticDOBControl / InertiaShapingEffortSimpleDOBControl / InertiaShapingDifferentialEffortAnalyticDOBControl* Torque control developed by PAL Robotics to use in the real robot.
-- *DirectPositionControl* Position Control.
-- *DirectTorqueControl* Torque Control used in simulation
-- *DirectEffortControl / DifferentialEffortControl* Current Control.
-- *NoControl* No control.
+- *InertiaShapingEffortAnalyticDOBControl / InertiaShapingEffortSimpleDOBControl / InertiaShapingDifferentialEffortAnalyticDOBControl*: Torque control developed by PAL Robotics to use in the real robot.
+- *DirectPositionControl*: Position Control.
+- *DirectTorqueControl*: Torque Control used in simulation
+- *DirectEffortControl / DifferentialEffortControl*: Current Control.
+- *NoControl*: No control.
 
 For example to just control the left_arm in position control start it as follows:
 ```
