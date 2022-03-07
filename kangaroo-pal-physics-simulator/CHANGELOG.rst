@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.5 (2022-03-07)
+------------------
 * fix missing kangaroo_bringup exec dependency
 * Contributors: Sai Kishor Kothakota
 
