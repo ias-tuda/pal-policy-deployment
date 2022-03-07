@@ -2,6 +2,11 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix missing kangaroo_bringup exec dependency
+* Contributors: Sai Kishor Kothakota
+
 0.0.4 (2021-11-17)
 ------------------
 * Merge branch 'closed_kinematic_chains' into 'master'
