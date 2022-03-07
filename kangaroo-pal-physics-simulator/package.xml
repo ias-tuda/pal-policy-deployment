@@ -23,6 +23,7 @@
   <build_depend>pal_physics_simulator</build_depend>
   <exec_depend>kangaroo_controller_configuration</exec_depend>
   <exec_depend>kangaroo_description</exec_depend>
+  <exec_depend>kangaroo_bringup</exec_depend>
   <exec_depend>kangaroo_leg_test_bench_description</exec_depend>
   <exec_depend>pal_physics_simulator</exec_depend>
 
