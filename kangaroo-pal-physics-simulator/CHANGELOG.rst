@@ -2,6 +2,15 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'enable_crane' into 'master'
+  Enable crane
+  See merge request control/kangaroo_pal_physics_simulator!4
+* unify the launches and added the proper arguments for the enable_crane part
+* Tune more PID gains
+* Contributors: Adria Roig, Sai Kishor Kothakota
+
 0.0.5 (2022-03-07)
 ------------------
 * fix missing kangaroo_bringup exec dependency
