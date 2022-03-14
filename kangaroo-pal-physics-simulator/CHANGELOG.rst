@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.6 (2022-03-14)
+------------------
 * Merge branch 'enable_crane' into 'master'
   Enable crane
   See merge request control/kangaroo_pal_physics_simulator!4
