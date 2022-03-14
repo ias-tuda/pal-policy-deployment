@@ -8,6 +8,8 @@
   <arg name="simulation"    default="false"/>
   <arg name="fixed_base"    default="false"/>
   <arg name="world"         default=""/>
+  <arg name="pids_type"     value="pids"               unless="$(arg fixed_base)"/>
+  <arg name="pids_type"     value="pids_fixed_base"    if="$(arg fixed_base)"/>
 
   <!-- Load Kangaroo description with -->
   <include file="$(find kangaroo_description)/robots/upload.launch">
@@ -17,11 +19,13 @@
   </include>
 
   <!-- Load PIDs  && Load HAL description -->
-  <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator_parameters.launch"/>
+  <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator_parameters.launch">
+    <arg name="pids"  value="$(arg pids_type)" />
+  </include>
 
   <!-- Launch simulation -->
   <include file="$(find pal_physics_simulator)/launch/pal_physics_simulator_parameters.launch">
-    <arg name="fixed_base"  value="false"/>
+    <arg name="fixed_base"  value="$(arg fixed_base)"/>
     <arg name="dt"          value="$(arg dt)"/>
     <arg name="type"        value="pal_physics_simulator::KangarooPhysicsSimulator"/>
   </include>
@@ -36,5 +40,16 @@
   <include file="$(find kangaroo_bringup)/launch/kangaroo_bringup.launch" />
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find kangaroo_pal_physics_simulator)/config/rviz/pal_physics_simulator.rviz" />
+
+  <group if="$(arg enable_crane)">
+    <rosparam ns="/simulator/parameters/">
+      fixed_links:
+        - link_id:
+              id: 0
+              name: "crane_link"
+          type: 7
+    </rosparam>
+    <rosparam param="/default_floating_base_pose/position/">[0., 0., 1.2]</rosparam>
+  </group>
 
 </launch>
