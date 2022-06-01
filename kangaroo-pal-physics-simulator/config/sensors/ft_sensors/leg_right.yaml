@@ -2,7 +2,3 @@ force_torque:
   right_ankle_ft:
     sensor_joint: leg_right_5_joint
     frame: leg_right_5_link
-imu:
-  base_imu:
-    frame: imu_link
-    gazebo_sensor_name: imu_sensor

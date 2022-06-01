@@ -11,6 +11,7 @@
   <arg name="world"         default=""/>
   <arg name="pids_type"     value="pids"               unless="$(arg fixed_base)"/>
   <arg name="pids_type"     value="pids_fixed_base"    if="$(arg fixed_base)"/>
+  <arg name="enable_ft"     default="true"/>
 
   <!-- Load Kangaroo description with -->
   <include file="$(find kangaroo_description)/robots/upload.launch">
@@ -23,6 +24,7 @@
   <!-- Load PIDs  && Load HAL description -->
   <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator_parameters.launch">
     <arg name="pids"  value="$(arg pids_type)" />
+    <arg name="enable_ft"   value="$(arg enable_ft)"/>
   </include>
 
   <!-- Launch simulation -->
