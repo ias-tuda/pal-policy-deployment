@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.7 (2022-12-22)
+------------------
 * Merge branch 'add_use_cage_argument' into 'master'
   add use_cage argument to the launch files
   See merge request control/kangaroo_pal_physics_simulator!6
