@@ -7,9 +7,11 @@
   <arg name="simulation"    default="false"/>
   <arg name="world"         default=""/>
   <arg name="fixed_base"    value="true"/>
+  <arg name="use_cage"      default="true"/> 
 
   <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator.launch">
     <arg name="fixed_base"  value="$(arg fixed_base)"/>
+    <arg name="use_cage"    value="$(arg use_cage)"/>
     <arg name="dt"          value="$(arg dt)"/>
     <arg name="debug"       value="$(arg debug)"/>
     <arg name="valgrind"    value="$(arg valgrind)"/>
