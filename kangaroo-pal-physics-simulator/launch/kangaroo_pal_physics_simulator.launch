@@ -8,6 +8,7 @@
   <arg name="simulation"    default="false"/>
   <arg name="fixed_base"    default="false"/>
   <arg name="use_cage"      default="true"/>
+  <arg name="ft_sensors"    default="false"/>
   <arg name="world"         default=""/>
   <arg name="pids_type"     value="pids"               unless="$(arg fixed_base)"/>
   <arg name="pids_type"     value="pids_fixed_base"    if="$(arg fixed_base)"/>
@@ -19,6 +20,7 @@
     <arg name="simulation"    value="$(arg simulation)"/> 
     <arg name="fixed_base"    value="$(arg fixed_base)"/> 
     <arg name="use_cage"      value="$(arg use_cage)"/> 
+    <arg name="ft_sensors"      value="$(arg ft_sensors)"/> 
   </include>
 
   <!-- Load PIDs  && Load HAL description -->
