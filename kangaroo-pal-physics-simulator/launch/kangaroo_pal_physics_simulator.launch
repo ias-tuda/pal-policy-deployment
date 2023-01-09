@@ -43,7 +43,9 @@
   </include>
 
   <!-- Spawn bringup controllers -->
-  <include file="$(find kangaroo_bringup)/launch/kangaroo_bringup.launch" />
+  <include file="$(find kangaroo_bringup)/launch/kangaroo_bringup.launch">
+    <arg name="ft_sensors" value="$(arg ft_sensors)"/>
+  </include>
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find kangaroo_pal_physics_simulator)/config/rviz/pal_physics_simulator.rviz" />
 
