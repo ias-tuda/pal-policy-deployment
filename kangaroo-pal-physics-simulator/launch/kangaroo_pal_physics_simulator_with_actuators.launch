@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
 
-  <arg name="debug"     default="false"/>
-  <arg name="valgrind"  default="false"/>
-  <arg name="dt"        default="0.0005"/>
-  <arg name="world"     default=""/>
-  <arg name="enable_ft"     default="true"/>
+  <arg name="debug"       default="false"/>
+  <arg name="valgrind"    default="false"/>
+  <arg name="dt"          default="0.0005"/>
+  <arg name="world"       default=""/>
+  <arg name="ft_sensors"  default="false"/>
 
   <!-- upload actuator parameters -->
   <include file="$(find kangaroo_pal_physics_simulator)/launch/upload_actuator_parameters.launch"/>
@@ -16,7 +16,7 @@
     <arg name="valgrind"  value="$(arg valgrind)"/>
     <arg name="dt"        value="$(arg dt)"/>
     <arg name="world"     value="$(arg world)"/>
-    <arg name="enable_ft" value="$(arg enable_ft)"/>
+    <arg name="ft_sensors" value="$(arg ft_sensors)"/>
   </include>
 
 </launch>
