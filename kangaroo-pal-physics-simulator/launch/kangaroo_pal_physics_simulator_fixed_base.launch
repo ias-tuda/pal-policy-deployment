@@ -8,7 +8,7 @@
   <arg name="world"         default=""/>
   <arg name="fixed_base"    value="true"/>
   <arg name="use_cage"      default="true"/>
-  <arg name="enable_ft"     default="true"/>
+  <arg name="ft_sensors"    default="false"/>
 
   <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator.launch">
     <arg name="fixed_base"  value="$(arg fixed_base)"/>
@@ -18,7 +18,7 @@
     <arg name="valgrind"    value="$(arg valgrind)"/>
     <arg name="world"       value="$(arg world)"/>
     <arg name="simulation"  value="$(arg simulation)"/> 
-    <arg name="enable_ft"   value="$(arg enable_ft)"/>
+    <arg name="ft_sensors"   value="$(arg ft_sensors)"/>
   </include>
 
 </launch>

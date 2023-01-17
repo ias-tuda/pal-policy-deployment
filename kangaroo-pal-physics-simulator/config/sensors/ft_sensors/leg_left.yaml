@@ -1,4 +1,4 @@
 force_torque:
   left_ankle_ft:
-    sensor_joint: leg_left_5_joint
-    frame: leg_left_5_link
+    sensor_joint: left_ft_sensor_joint
+    frame: left_ft_sensor_link
