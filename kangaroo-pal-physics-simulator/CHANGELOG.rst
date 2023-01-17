@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.8 (2023-01-17)
+------------------
 * Merge branch 'ft_robot' into 'master'
   Add argument to start robot with ft_sensors or not
   See merge request control/kangaroo_pal_physics_simulator!7
