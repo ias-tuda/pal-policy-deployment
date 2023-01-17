@@ -2,6 +2,21 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'ft_robot' into 'master'
+  Add argument to start robot with ft_sensors or not
+  See merge request control/kangaroo_pal_physics_simulator!7
+* unify enable_ft and ft_sensors argument with new ft_sensor_link changes
+* Propagate ft_sensors argument to the bringup
+* Add argument to start robot with ft_sensors or not
+* Merge branch 'added_enable_ft' into 'master'
+  added a way to enable/disable the FT sensors in the simulator
+  See merge request control/kangaroo_pal_physics_simulator!5
+* moved the imu sensor information to torso
+* added a way to enable/disable the FT sensors in the simulator
+* Contributors: Adria Roig, Adrià Roig, Sai Kishor Kothakota, saikishor
+
 0.0.7 (2022-12-22)
 ------------------
 * Merge branch 'add_use_cage_argument' into 'master'
