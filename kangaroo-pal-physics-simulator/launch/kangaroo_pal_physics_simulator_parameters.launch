@@ -13,6 +13,7 @@
   <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
     <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/sensors/imu/" />
   </include>
+  <rosparam command="load" file="$(find kangaroo_pal_physics_simulator)/config/sensors/imu/torso.yaml"/>
 
   <group if="$(arg ft_sensors)">
     <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
