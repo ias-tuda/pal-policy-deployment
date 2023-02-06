@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>kangaroo_pal_physics_simulator</name>
-  <version>0.0.8</version>
+  <version>0.0.9</version>
   <description>The kangaroo_pal_physics_simulator package</description>
 
   <author email="sai.kishor@pal-robotics.com">Sai Kishor Kothakota</author>

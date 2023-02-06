@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.9 (2023-02-06)
+------------------
 * Update the rviz config with FT information
 * added the missing imu config as selective_rosparam_loader.launch doesn't do it
 * Contributors: Sai Kishor Kothakota
