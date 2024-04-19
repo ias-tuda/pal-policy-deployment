@@ -2,6 +2,14 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'add/urdf/version_argument' into 'master'
+  add version argument to the pal physics simulator launch
+  See merge request control/kangaroo_pal_physics_simulator!9
+* add version argument to the pal physics simulator launch
+* Contributors: Adria Roig, Sai Kishor Kothakota
+
 0.0.9 (2023-02-06)
 ------------------
 * Update the rviz config with FT information
