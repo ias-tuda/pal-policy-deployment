@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.10 (2024-04-19)
+-------------------
 * Merge branch 'add/urdf/version_argument' into 'master'
   add version argument to the pal physics simulator launch
   See merge request control/kangaroo_pal_physics_simulator!9
