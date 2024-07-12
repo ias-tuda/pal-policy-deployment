@@ -2,6 +2,11 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Change pal_physics_simulator to depend directly
+* Contributors: Sai Kishor Kothakota
+
 0.0.10 (2024-04-19)
 -------------------
 * Merge branch 'add/urdf/version_argument' into 'master'
