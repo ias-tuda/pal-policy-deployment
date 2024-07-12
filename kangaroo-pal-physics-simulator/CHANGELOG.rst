@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.11 (2024-07-12)
+-------------------
 * Change pal_physics_simulator to depend directly
 * Contributors: Sai Kishor Kothakota
 
