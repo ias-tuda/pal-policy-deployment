@@ -2,6 +2,15 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'gui_arg' into 'master'
+  Add an argument 'gui' to disable the rviz
+  See merge request control/kangaroo_pal_physics_simulator!10
+* Apply 1 suggestion(s) to 1 file(s)
+* Add an argument 'gui' to disable the rviz
+* Contributors: Pierre Fernbach, Sai Kishor Kothakota
+
 0.0.11 (2024-07-12)
 -------------------
 * Change pal_physics_simulator to depend directly
