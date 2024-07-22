@@ -13,6 +13,7 @@
   <arg name="world"         default=""/>
   <arg name="pids_type"     value="pids"               unless="$(arg fixed_base)"/>
   <arg name="pids_type"     value="pids_fixed_base"    if="$(arg fixed_base)"/>
+  <arg name="gui" default="true"/>
 
   <!-- Load Kangaroo description with -->
   <include file="$(find kangaroo_description)/robots/upload.launch">
@@ -48,7 +49,7 @@
     <arg name="ft_sensors" value="$(arg ft_sensors)"/>
   </include>
 
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find kangaroo_pal_physics_simulator)/config/rviz/pal_physics_simulator.rviz" />
+  <node name="rviz" pkg="rviz" type="rviz" if="$(arg gui)" args="-d $(find kangaroo_pal_physics_simulator)/config/rviz/pal_physics_simulator.rviz" />
 
   <group if="$(arg enable_crane)">
     <rosparam ns="/simulator/parameters/">
