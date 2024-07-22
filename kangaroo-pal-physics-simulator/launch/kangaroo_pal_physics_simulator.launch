@@ -49,9 +49,7 @@
     <arg name="ft_sensors" value="$(arg ft_sensors)"/>
   </include>
 
-  <group if="$(arg gui)">
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find kangaroo_pal_physics_simulator)/config/rviz/pal_physics_simulator.rviz" />
-  </group>
+  <node name="rviz" pkg="rviz" type="rviz" if="$(arg gui)" args="-d $(find kangaroo_pal_physics_simulator)/config/rviz/pal_physics_simulator.rviz" />
 
   <group if="$(arg enable_crane)">
     <rosparam ns="/simulator/parameters/">
