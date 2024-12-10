@@ -7,7 +7,6 @@
   <arg name="enable_crane"  default="false"/> 
   <arg name="simulation"    default="false"/>
   <arg name="fixed_base"    default="false"/>
-  <arg name="use_cage"      default="true"/>
   <arg name="ft_sensors"    default="false"/>
   <arg name="with_pelvis"   default="false"/>
   <arg name="with_arms"   default="false"/>
@@ -21,7 +20,6 @@
     <arg name="enable_crane"  value="$(arg enable_crane)"/> 
     <arg name="simulation"    value="$(arg simulation)"/> 
     <arg name="fixed_base"    value="$(arg fixed_base)"/> 
-    <arg name="use_cage"      value="$(arg use_cage)"/> 
     <arg name="ft_sensors"    value="$(arg ft_sensors)"/> 
     <arg name="with_pelvis"   value="$(arg with_pelvis)"/>
     <arg name="with_arms"     value="$(arg with_arms)"/>
