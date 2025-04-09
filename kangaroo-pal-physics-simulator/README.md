@@ -11,6 +11,8 @@ $ roslaunch kangaroo_pal_physics_simulator kangaroo_pal_physics_simulator.launch
 
 The simulator uses *RViz* as a visualization tool.
 
+![ ](./imgs/simulator.png)
+
 ## Start controllers
 
 The *PAL Physics Simulator* has a plugin to use ROS control, and the behaviour is the same as launching the controllers in the real robot.
