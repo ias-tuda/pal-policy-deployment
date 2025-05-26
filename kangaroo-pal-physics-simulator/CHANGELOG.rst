@@ -2,6 +2,18 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'lm/arms_and_pelvis' into 'master'
+  Add arms and pelvis
+  See merge request control/kangaroo_pal_physics_simulator!11
+* Add arguments for with_arms with_pelvis in kangaroo_bringup
+* remove unsed param for cage
+* added params and config for arms and pelvis
+* Update README
+* Add README
+* Contributors: Adria Roig, Adrià Roig, Luca Marchionni, ileniaperrella
+
 0.0.12 (2024-07-22)
 -------------------
 * Merge branch 'gui_arg' into 'master'
