@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.13 (2025-05-26)
+-------------------
 * Merge branch 'lm/arms_and_pelvis' into 'master'
   Add arms and pelvis
   See merge request control/kangaroo_pal_physics_simulator!11
