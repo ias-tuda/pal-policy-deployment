@@ -5,7 +5,3 @@ force_torque:
   right_ankle_ft:
     frame: right_sole_link
     report: right_sole_link
-
-imu:
-  base_imu:
-    frame: imu_link
