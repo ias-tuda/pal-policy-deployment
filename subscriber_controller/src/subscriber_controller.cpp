@@ -66,23 +66,41 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh)
   // Mutex time
   ms_mutex_ = getControllerDt().toSec() * 1000;
 
-  // Impedance gains
-  p_arm_gain_ = 100.0;
-  d_arm_gain_ = 8.0;
-  p_torso_gain_ = 500.0;
-  d_torso_gain_ = 20.0;
-  p_leg_gain_ = 800.0;
-  d_leg_gain_ = 35.0;
+  std::string gains_ns = "gains";
+  XmlRpc::XmlRpcValue gains_param;
 
-  // Set the impedance gains a variables that can be configured online
-  dd_reconfigure_.reset(new ddynamic_reconfigure::DDynamicReconfigure(control_nh));
-  dd_reconfigure_->RegisterVariable(&p_arm_gain_, "p_arm");
-  dd_reconfigure_->RegisterVariable(&d_arm_gain_, "d_arm");
-  dd_reconfigure_->RegisterVariable(&p_torso_gain_, "p_torso");
-  dd_reconfigure_->RegisterVariable(&d_torso_gain_, "d_torso");
-  dd_reconfigure_->RegisterVariable(&p_leg_gain_, "p_leg");
-  dd_reconfigure_->RegisterVariable(&d_leg_gain_, "d_leg");
-  dd_reconfigure_->PublishServicesTopics();
+  if (!control_nh.getParam(gains_ns, gains_param)) {
+      ROS_ERROR("Failed to get 'gains' parameter.");
+      return false;
+  }
+
+  if (gains_param.getType() != XmlRpc::XmlRpcValue::TypeStruct) {
+      ROS_ERROR("'gains' parameter is not a struct.");
+      return false;
+  }
+
+  PAL_ASSERT_PERSIST_EQUAL(gains_param.size(), actual_js_state_.name.size());
+  gains_.resize(actual_js_state_.name.size());
+
+  for (auto it = gains_param.begin(); it != gains_param.end(); ++it) {
+      std::string joint_name = it->first;
+      std::string joint_ns = gains_ns + "/" + joint_name;
+      control_toolbox::Pid pid;
+      if (pid.init(ros::NodeHandle(control_nh, joint_ns))) {
+          auto it2 = std::find(actual_js_state_.name.begin(), actual_js_state_.name.end(), joint_name);
+          if(it2 == actual_js_state_.name.end())
+          {
+            ROS_ERROR_STREAM("Couldn't find " << joint_name << " in controlled joint names");
+            return false;
+          }
+          size_t i = std::distance(actual_js_state_.name.begin(), it2);
+          gains_[i] = pid;
+          ROS_INFO_STREAM("Loaded PID for joint: " << joint_name);
+      } else {
+          ROS_ERROR_STREAM("Failed to load PID for joint: " << joint_name);
+          return false;
+      }
+  }
 
   return true;
 }
@@ -147,21 +165,12 @@ void SubscriberController::updateExtras(const ros::Time &time, const ros::Durati
   {
     for (size_t i = 0; i < actual_js_state_.name.size(); i++)
     {
-      if (actual_js_state_.name[i].find("torso") != std::string::npos)
-        desired_torque_[i] =
-            initial_torque_[i] -
-            p_torso_gain_ * (getActualJointPosition(i) - initial_position_[i]) -
-            d_torso_gain_ * getActualJointVelocity(i);
-      else if (actual_js_state_.name[i].find("arm") != std::string::npos)
-        desired_torque_[i] = initial_torque_[i] -
-                             p_arm_gain_ * (getActualJointPosition(i) - initial_position_[i]) -
-                             d_arm_gain_ * getActualJointVelocity(i);
-      else
-        desired_torque_[i] = initial_torque_[i] -
-                             p_leg_gain_ * (getActualJointPosition(i) - initial_position_[i]) -
-                             d_leg_gain_ * getActualJointVelocity(i);
-      setDesiredJointState(actual_js_state_.name[i], initial_position_[i], 0., 0.,
-                           desired_torque_[i]);
+      desired_torque_[i] = initial_torque_[i] +
+              gains_[i].computeCommand(initial_position_[i] - getActualJointPosition(i),
+                                       -getActualJointVelocity(i), period);
+
+     setDesiredJointState(actual_js_state_.name[i], initial_position_[i], 0., 0.,
+                          desired_torque_[i]);
     }
   }
   else

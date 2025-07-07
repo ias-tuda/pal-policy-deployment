@@ -3,7 +3,11 @@ estimator_type: legged_state_estimator::KinematicStateEstimator
 estimator_parameters:
   robot_model_chains: []
   fix_yaw: true
-  freeze_foot_height: true
+  freeze_foot_height: true  # If true, assume that the robot is walking on a mostly flat environment
+  # and constraint the estimated height of the feet in contact to be constant. This is used to prevent drifting.
+  freeze_foot_height_threshold: 0.02 # If freeze_foot_height is true when the error between the estimated contact height
+  # and the previous contact height is above this treshold, the estimator update the feet height. 
+  # When the error is below it maintain the height constant as desribed above, in order to avoid drifting
   gravity: [0., 0., -9.81]
 
   use_imu_filtered_linear_acc: true
