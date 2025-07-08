@@ -12,8 +12,8 @@
   <arg name="local_joint_control_ankle" default="direct_impedance_control"/>
   <arg name="local_joint_control_hip" default="direct_impedance_control"/>
   <arg name="local_joint_control_hip_z" default="direct_impedance_control"/>
-  <arg name="local_joint_control_pelvis" default="no_control"/>
-  <arg name="local_joint_control_arms" default="no_control"/>
+  <arg name="local_joint_control_pelvis" default="direct_impedance_control"/>
+  <arg name="local_joint_control_arms" default="direct_impedance_control"/>
   <arg name="local_joint_control_pkg" default="pal_local_joint_control"/>
   <arg name="safety_override" default=""/>
   <arg name="disable_safety_for_joints" default="['leg_left_4_joint','leg_left_5_joint','leg_right_4_joint','leg_right_5_joint']"/>
