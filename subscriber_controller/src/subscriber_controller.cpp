@@ -153,7 +153,7 @@ void SubscriberController::updateExtras(const ros::Time &time, const ros::Durati
   // If locked and desired state received
   if (lock.owns_lock() && (!desired_state_.name.empty()))
   {
-    for (size_t i = 1; i < desired_state_.name.size(); i++)
+    for (size_t i = 0; i < desired_state_.name.size(); i++)
     {
       setDesiredJointState(desired_state_.name[i], desired_state_.position[i],
                            desired_state_.velocity[i], 0., desired_state_.effort[i]);
