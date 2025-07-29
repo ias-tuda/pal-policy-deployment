@@ -9,7 +9,6 @@
 #ifndef SUBSCRIBER_CONTROLLER_H
 #define SUBSCRIBER_CONTROLLER_H
 
-#include <ddynamic_reconfigure/ddynamic_reconfigure.h>
 #include <nav_msgs/Odometry.h>
 #include <pal_base_ros_controller/base_robot_with_estimator_controller.h>
 #include <pluginlib/class_list_macros.h>
@@ -49,9 +48,6 @@ private:
   std::vector<double> initial_torque_;
   std::vector<double> initial_position_;
   std::vector<double> desired_torque_;
-
-  // Dynamic reconfigure
-  ddynamic_reconfigure::DDynamicReconfigurePtr dd_reconfigure_;
 
   // Impedance gains
   std::vector<control_toolbox::Pid> gains_;

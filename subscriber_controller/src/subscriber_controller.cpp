@@ -24,6 +24,7 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh)
   // Create a simple subscriber (there are no RT subscribers)
   state_sub_ =
       control_nh.subscribe("desired_state", 1, &SubscriberController::controlCb, this, hints);
+
   actual_js_state_.name = getControlledJointNames();
 
   // Read the initial torques from the sensors
