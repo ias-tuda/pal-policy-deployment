@@ -9,13 +9,14 @@
 #ifndef SUBSCRIBER_CONTROLLER_H
 #define SUBSCRIBER_CONTROLLER_H
 
-#include <ddynamic_reconfigure/ddynamic_reconfigure.h>
 #include <nav_msgs/Odometry.h>
 #include <pal_base_ros_controller/base_robot_with_estimator_controller.h>
 #include <pluginlib/class_list_macros.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <sensor_msgs/JointState.h>
 #include <pluginlib/class_list_macros.hpp>
+#include <unordered_map>
+#include <control_toolbox/pid.h>
 
 namespace subscriber_controller
 {
@@ -48,16 +49,8 @@ private:
   std::vector<double> initial_position_;
   std::vector<double> desired_torque_;
 
-  // Dynamic reconfigure
-  ddynamic_reconfigure::DDynamicReconfigurePtr dd_reconfigure_;
-
   // Impedance gains
-  double p_arm_gain_;
-  double d_arm_gain_;
-  double p_torso_gain_;
-  double d_torso_gain_;
-  double p_leg_gain_;
-  double d_leg_gain_;
+  std::vector<control_toolbox::Pid> gains_;
 
   // Real time publishers
   boost::shared_ptr<realtime_tools::RealtimePublisher<sensor_msgs::JointState>> joint_states_pub_;
