@@ -2,8 +2,8 @@
 Changelog for package subscriber_controller
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.1 (2025-09-25)
+------------------
 * Merge branch 'kangaroo' into 'master'
   Kangaroo
   See merge request control/subscriber_controller!2
