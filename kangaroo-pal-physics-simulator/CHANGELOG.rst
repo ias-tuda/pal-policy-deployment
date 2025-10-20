@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.14 (2025-10-20)
+-------------------
 * Merge branch 'lm/new_handle_and_torso_rgbds' into 'master'
   add parameters for new torso
   See merge request control/kangaroo_pal_physics_simulator!14
