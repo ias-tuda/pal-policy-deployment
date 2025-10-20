@@ -2,6 +2,22 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'lm/new_handle_and_torso_rgbds' into 'master'
+  add parameters for new torso
+  See merge request control/kangaroo_pal_physics_simulator!14
+* Merge branch 'disable/demo_mode' into 'master'
+  Disable the demo_mode to avoid loading controllers
+  See merge request control/kangaroo_pal_physics_simulator!15
+* Disable the demo_mode to avoid loading controllers
+* add parameters for new torso
+* Merge branch 'fix/launch_fixbase_arguments' into 'master'
+  fixed launchfile arguments
+  See merge request control/kangaroo_pal_physics_simulator!12
+* fixed launchfile arguments
+* Contributors: Luca Marchionni, Sai Kishor Kothakota, sergiacosta
+
 0.0.13 (2025-05-26)
 -------------------
 * Merge branch 'lm/arms_and_pelvis' into 'master'
