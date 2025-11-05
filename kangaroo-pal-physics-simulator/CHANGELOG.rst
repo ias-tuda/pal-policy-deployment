@@ -2,6 +2,17 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'sma/add_gripper_7dof_arm' into 'master'
+  Add arguments to parse pal pro gripper with 7dof arm
+  See merge request control/kangaroo_pal_physics_simulator!16
+* added config files for 7dof_gripper robot type
+* added end effector type launch argument
+* updated robot_type logic for 7dof arm
+* updated config files for 7dof arm
+* Contributors: Sai Kishor Kothakota, sergiacosta
+
 0.0.14 (2025-10-20)
 -------------------
 * Merge branch 'lm/new_handle_and_torso_rgbds' into 'master'
