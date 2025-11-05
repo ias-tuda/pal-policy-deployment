@@ -1,23 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
 
+  <arg name="arm_type"    default="4dof"/>
   <arg name="pids"        default="pids"/>
   <arg name="ft_sensors"  default="true"/>
 
   <!-- Load pids -->
   <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
     <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/$(arg pids)/" />
+    <arg name="arm_type" value="$(arg arm_type)" />
   </include>
 
   <!-- Load HAL description -->
   <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
     <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/sensors/imu/" />
+    <arg name="arm_type" value="$(arg arm_type)" />
   </include>
   <rosparam command="load" file="$(find kangaroo_pal_physics_simulator)/config/sensors/imu/torso.yaml"/>
 
   <group if="$(arg ft_sensors)">
     <include file="$(find kangaroo_controller_configuration)/launch/selective_rosparam_loader.launch">
       <arg name="prefix"  value="$(find kangaroo_pal_physics_simulator)/config/sensors/ft_sensors/" />
+      <arg name="arm_type" value="$(arg arm_type)" />
     </include>
   </group>
 </launch>
