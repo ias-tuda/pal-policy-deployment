@@ -2,8 +2,8 @@
 Changelog for package kangaroo_pal_physics_simulator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.15 (2025-11-05)
+-------------------
 * Merge branch 'sma/add_gripper_7dof_arm' into 'master'
   Add arguments to parse pal pro gripper with 7dof arm
   See merge request control/kangaroo_pal_physics_simulator!16
