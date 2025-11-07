@@ -24,3 +24,8 @@ catkin_package(
 )
 
 include_directories(${catkin_INCLUDE_DIRS})
+
+foreach(dir config launch models)
+    install(DIRECTORY ${dir}/
+        DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/${dir})
+endforeach(dir)
