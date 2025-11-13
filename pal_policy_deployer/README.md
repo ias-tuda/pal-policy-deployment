@@ -5,7 +5,7 @@
 To run:
 
 ```bash
-roslaunch pal_policy_deployer kang_rl_deployer.launch policy:=(loco|reach|balance)
+roslaunch pal_policy_deployer kang_rl_deployer.launch policy:=(loco|loco_v21|reach|balance)
 ```
 
 - **pal_policy_deployer**: Package containing the models and launch files. Installing it will also install the two other packages.
