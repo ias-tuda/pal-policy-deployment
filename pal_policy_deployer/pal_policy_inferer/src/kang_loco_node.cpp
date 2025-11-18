@@ -44,20 +44,20 @@ static const std::vector<std::string> obs_order {
   "leg_left_5_joint", "leg_right_5_joint",
 };
 static const std::vector<double> obs_offset {
-  0.0, 
-  0.0, 0.0, 
-  0.0, 
-  0.05, 0.05, 
-  0.24, -0.24, 
-  0.0, 0.0, 
-  1.32, 1.32, 
-  0.6832, 1.1172, 
-  0.6832, 1.1172, 
-  1.57, -1.57, 
-  -0.05, 2.2345, 
-  -0.05, 2.2345, 
-  0.8, 0.8, 
-  0.0, 0.0
+  0.0,                // pelvis_1_joint
+  -0.012, 0.012,      // leg_left_1_joint, leg_right_1_joint
+  0.0,                // pelvis_2_joint
+  0.054, 0.054,       // leg_left_2_joint, leg_right_2_joint
+  0.24, -0.24,        // arm_left_1_joint, arm_right_1_joint
+  0.04, -0.04,        // leg_left_3_joint, leg_right_3_joint
+  1.32, 1.32,         // arm_left_2_joint, arm_right_2_joint
+  0.6, 0.9,           // leg_left_length_joint
+  0.6, 0.9,           // leg_right_length_joint
+  1.57, -1.57,        // arm_left_3_joint, arm_right_3_joint
+  -0.053, 1.8,        // leg_left_4_joint
+  -0.053, 1.8,        // leg_right_4_joint
+  0.8, 0.8,           // arm_left_4_joint, arm_right_4_joint
+  0.0, 0.0            // leg_left_5_joint, leg_right_5_joint
 };
 
 // ---- ACTION INFORMATIONS ----
@@ -79,36 +79,36 @@ static const std::vector<std::string> action_order {
   "leg_left_5_joint", "leg_right_5_joint"
 };
 static const std::vector<double> action_offset {
-  0.0, 
-  0.0, 0.0, 
-  0.0, 
-  0.05, 0.05, 
-  0.24, -0.24, 
-  0.0, 0.0, 
-  1.32, 1.32, 
-  0.6832, // 1.1172, 
-  0.6832, // 1.1172, 
-  1.57, -1.57, 
-  -0.05, // 2.2345, 
-  -0.05, // 2.2345, 
-  0.8, 0.8, 
-  0.0, 0.0
+  0.0,                // pelvis_1_joint
+  -0.012, 0.012,      // leg_left_1_joint, leg_right_1_joint
+  0.0,                // pelvis_2_joint
+  0.054, 0.054,       // leg_left_2_joint, leg_right_2_joint
+  0.24, -0.24,        // arm_left_1_joint, arm_right_1_joint
+  0.04, -0.04,        // leg_left_3_joint, leg_right_3_joint
+  1.32, 1.32,         // arm_left_2_joint, arm_right_2_joint
+  0.6, // 0.9,        // leg_left_length_joint
+  0.6, // 0.9,        // leg_right_length_joint
+  1.57, -1.57,        // arm_left_3_joint, arm_right_3_joint
+  -0.053, // 1.8,     // leg_left_4_joint
+  -0.053, // 1.8,     // leg_right_4_joint
+  0.8, 0.8,           // arm_left_4_joint, arm_right_4_joint
+  0.0, 0.0            // leg_left_5_joint, leg_right_5_joint
 };
 static const std::vector<double> action_scale {
-  0.3125, 
-  0.5, 0.5, 
-  0.625, 
-  0.575, 0.575, 
-  0.1075, 0.1075, 
-  0.3475, 0.3475, 
-  0.1075, 0.1075, 
-  0.25,
-  0.25, 
-  0.1075, 0.1075, 
-  0.35, 
-  0.35, 
-  0.1075, 0.1075, 
-  0.5125, 0.5125
+  0.012515142459705577,   // pelvis_1_joint
+  0.5, 0.5,               // leg_left_1_joint, leg_right_1_joint
+  0.012515142459705577,   // pelvis_2_joint
+  0.575, 0.575,           // leg_left_2_joint, leg_right_2_joint
+  0.012515142459705577, 0.012515142459705577,   // arm_left_1_joint, arm_right_1_joint
+  0.3475, 0.3475,         // leg_left_3_joint, leg_right_3_joint
+  0.012515142459705577, 0.012515142459705577,   // arm_left_2_joint, arm_right_2_joint
+  0.25,                   // leg_left_length_joint
+  0.25,                   // leg_right_length_joint
+  0.011938071640804649, 0.011938071640804649,   // arm_left_3_joint, arm_right_3_joint
+  0.35,                   // leg_left_4_joint
+  0.35,                   // leg_right_4_joint
+  0.011938071640804649, 0.011938071640804649,   // arm_left_4_joint, arm_right_4_joint
+  0.5125, 0.5125          // leg_left_5_joint, leg_right_5_joint
 };
 
 // Policy specific vars
@@ -186,49 +186,17 @@ void jsCB(const sensor_msgs::JointState::ConstPtr& msg)
 void imuCB(const sensor_msgs::Imu::ConstPtr& msg)
 {
     // base_ang_vel
-    observation[74] = msg->angular_velocity.x * 0.1;
-    observation[75] = msg->angular_velocity.y * 0.1;
-    observation[76] = msg->angular_velocity.z * 0.1;
+    observation[74] = msg->angular_velocity.x;
+    observation[75] = msg->angular_velocity.y;
+    observation[76] = msg->angular_velocity.z;
     // ROS_INFO("Base angular velocity: x: %f, y: %f, z: %f\n", msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z);
 
     // base_lin_acc
-    observation[77] = msg->linear_acceleration.x * 0.1;
-    observation[78] = msg->linear_acceleration.y * 0.1;
-    observation[79] = msg->linear_acceleration.z * 0.1;
+    observation[77] = msg->linear_acceleration.x;
+    observation[78] = msg->linear_acceleration.y;
+    observation[79] = msg->linear_acceleration.z;
     // ROS_INFO("Base linear acceleration: x: %f, y: %f, z: %f\n", msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z);
 }
-
-// base state data (9)
-// void baseStateCB(const nav_msgs::Odometry::ConstPtr& msg)
-// {
-//     // base linear velocity
-//     observation[74] = msg->twist.twist.linear.x;
-//     observation[75] = msg->twist.twist.linear.y;
-//     observation[76] = msg->twist.twist.linear.z;
-//     ROS_INFO("Base angular velocity: x: %f, y: %f, z: %f\n", observation[74], observation[75], observation[76]);
-
-//     // base angular velocity
-//     observation[77] = msg->twist.twist.angular.x;
-//     observation[78] = msg->twist.twist.angular.y;
-//     observation[79] = msg->twist.twist.angular.z;
-//     ROS_INFO("Base linear acceleration: x: %f, y: %f, z: %f\n", observation[77], observation[78], observation[79]);
-
-//     // projected gravity
-//     base_quat.w() = msg->pose.pose.orientation.w;
-//     base_quat.x() = msg->pose.pose.orientation.x;
-//     base_quat.y() = msg->pose.pose.orientation.y;
-//     base_quat.z() = msg->pose.pose.orientation.z;
-
-//     // Rotate world gravity into body frame
-//     projected_gravity_b = base_quat.conjugate() * gravity_world;
-//     // might need to normalize but im really unsure as it does not seem to be done in isaac lab
-//     // projected_gravity_b.normalize();  // unit vector
-
-//     observation[81] = projected_gravity_b.x();
-//     observation[82] = projected_gravity_b.y();
-//     observation[83] = projected_gravity_b.z();
-//     ROS_INFO("Base linear acceleration: x: %f, y: %f, z: %f\n", observation[81], observation[82], observation[83]);
-// }
 
 // rosrun teleop_twist_keyboard teleop_twist_keyboard.py (3)
 void velCmdCB(const geometry_msgs::Twist::ConstPtr& msg)
@@ -246,7 +214,7 @@ int main(int argc,char** argv)
   ros::init(argc,argv,"pal_policy_deployer"); ros::NodeHandle nh("~");
   
   std::string pkg_root = ros::package::getPath("pal_policy_deployer");
-  std::string config_dir = pkg_root + "/models/loco/loco_v36/exported/";
+  std::string config_dir = pkg_root + "/models/loco/loco_v37_temp/exported/";
   std::string model_path;
   bool found = false;
   for (auto& entry : fs::directory_iterator(config_dir)) {
@@ -271,7 +239,7 @@ int main(int argc,char** argv)
 
   ros::Subscriber s1 = nh.subscribe("/joint_states", 1, jsCB);
   ros::Subscriber s2 = nh.subscribe("/base_imu", 1, imuCB);
-//   ros::Subscriber s2 = nh.subscribe("/floating_base_pose_simulated", 1, baseStateCB);
+  // ros::Subscriber s2 = nh.subscribe("/floating_base_pose_simulated", 1, baseStateCB);
   ros::Subscriber s3 = nh.subscribe("/cmd_vel", 1, velCmdCB);
 
   pub_sub_cmd = nh.advertise<sensor_msgs::JointState>("/subscriber_controller/desired_state", 1);
