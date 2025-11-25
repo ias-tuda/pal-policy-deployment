@@ -2,7 +2,7 @@
 <launch>
   <!-- Choose which pipeline to deploy -->
   <arg name="policy" default="balance"
-       doc="Which policy to run: balance | loco | loco_v21 | reach" />
+       doc="Which policy to run: balance | loco | loco_v21 | reach | loco_v42" />
 
   <!-- Dynamically include the corresponding launch file -->
   <include file="$(find pal_policy_deployer)/launch/kang_$(arg policy)_deployer.launch" />
