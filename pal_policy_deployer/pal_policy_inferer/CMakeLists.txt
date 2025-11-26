@@ -58,14 +58,7 @@ target_link_libraries(${PROJECT_NAME}_loco_node_v21
   onnxruntime
 )
 
-add_executable(${PROJECT_NAME}_loco_node_v42_temp src/kang_loco_node_v42_temp.cpp)
-target_link_libraries(${PROJECT_NAME}_loco_node_v42_temp
-  ${catkin_LIBRARIES}
-  ${Boost_FILESYSTEM_LIBRARY}
-  ${Boost_SYSTEM_LIBRARY}
-  onnxruntime
-)
 
-install(TARGETS ${PROJECT_NAME}_reach_node ${PROJECT_NAME}_balance_node ${PROJECT_NAME}_loco_node ${PROJECT_NAME}_loco_node_v21 ${PROJECT_NAME}_loco_node_v42_temp
+install(TARGETS ${PROJECT_NAME}_reach_node ${PROJECT_NAME}_balance_node ${PROJECT_NAME}_loco_node ${PROJECT_NAME}_loco_node_v21 
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

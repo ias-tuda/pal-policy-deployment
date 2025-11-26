@@ -1,9 +1,14 @@
-<!-- pal_policy_deployer/launch/kang_rl_deployer.launch -->
 <launch>
   <!-- Choose which pipeline to deploy -->
   <arg name="policy" default="balance"
        doc="Which policy to run: balance | loco | loco_v21 | reach | loco_v42" />
-
-  <!-- Dynamically include the corresponding launch file -->
-  <include file="$(find pal_policy_deployer)/launch/kang_$(arg policy)_deployer.launch" />
+  
+  <!-- Argument for model version -->
+  <arg name="model" default="v44" 
+       doc="Model version to load (e.g., v44, v45, v50)" />
+  
+  <!-- Dynamically include the corresponding launch file and pass the model -->
+  <include file="$(find pal_policy_deployer)/launch/kang_$(arg policy)_deployer.launch">
+    <arg name="model" value="$(arg model)" />
+  </include>
 </launch>
