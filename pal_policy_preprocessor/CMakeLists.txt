@@ -51,6 +51,6 @@ add_dependencies(joy_twist_accumulator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${cat
 
 
 ## Mark executables for installation
-install(TARGETS ${PROJECT_NAME}_reach_node ${PROJECT_NAME}_balance_node ${PROJECT_NAME}_loco_node
+install(TARGETS ${PROJECT_NAME}_reach_node ${PROJECT_NAME}_balance_node ${PROJECT_NAME}_loco_node joy_twist_accumulator
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
