@@ -112,33 +112,33 @@ private:
     // Clear screen (optional - comment out if you don't want screen clearing)
     // std::cout << "\033[2J\033[1;1H";
     
-    ROS_INFO_STREAM("\n========== Velocity Command Status ==========");
-    ROS_INFO_STREAM("Speed Mode: " << mode << " (LT:" << (mode >= 2 ? "ON" : "OFF") 
-                   << " RT:" << (mode >= 1 ? "ON" : "OFF") << ")");
-    ROS_INFO_STREAM("---------------------------------------------");
+    // ROS_INFO_STREAM("\n========== Velocity Command Status ==========");
+    // ROS_INFO_STREAM("Speed Mode: " << mode << " (LT:" << (mode >= 2 ? "ON" : "OFF") 
+    //                << " RT:" << (mode >= 1 ? "ON" : "OFF") << ")");
+    // ROS_INFO_STREAM("---------------------------------------------");
     
-    // Linear X
-    std::string bar_x = createBar(twist.linear.x, current_mode.min_x, current_mode.max_x);
-    ROS_INFO_STREAM(std::fixed << std::setprecision(2)
-                   << "Vx:  " << std::setw(6) << twist.linear.x 
-                   << " m/s  " << bar_x);
-    ROS_INFO_STREAM("     Range: [" << current_mode.min_x << ", " << current_mode.max_x << "]");
+    // // Linear X
+    // std::string bar_x = createBar(twist.linear.x, current_mode.min_x, current_mode.max_x);
+    // ROS_INFO_STREAM(std::fixed << std::setprecision(2)
+    //                << "Vx:  " << std::setw(6) << twist.linear.x 
+    //                << " m/s  " << bar_x);
+    // ROS_INFO_STREAM("     Range: [" << current_mode.min_x << ", " << current_mode.max_x << "]");
     
-    // Linear Y
-    std::string bar_y = createBar(twist.linear.y, current_mode.min_y, current_mode.max_y);
-    ROS_INFO_STREAM(std::fixed << std::setprecision(2)
-                   << "Vy:  " << std::setw(6) << twist.linear.y 
-                   << " m/s  " << bar_y);
-    ROS_INFO_STREAM("     Range: [" << current_mode.min_y << ", " << current_mode.max_y << "]");
+    // // Linear Y
+    // std::string bar_y = createBar(twist.linear.y, current_mode.min_y, current_mode.max_y);
+    // ROS_INFO_STREAM(std::fixed << std::setprecision(2)
+    //                << "Vy:  " << std::setw(6) << twist.linear.y 
+    //                << " m/s  " << bar_y);
+    // ROS_INFO_STREAM("     Range: [" << current_mode.min_y << ", " << current_mode.max_y << "]");
     
-    // Angular Z
-    std::string bar_wz = createBar(twist.angular.z, current_mode.min_wz, current_mode.max_wz);
-    ROS_INFO_STREAM(std::fixed << std::setprecision(2)
-                   << "wz:  " << std::setw(6) << twist.angular.z 
-                   << " rad/s " << bar_wz);
-    ROS_INFO_STREAM("     Range: [" << current_mode.min_wz << ", " << current_mode.max_wz << "]");
+    // // Angular Z
+    // std::string bar_wz = createBar(twist.angular.z, current_mode.min_wz, current_mode.max_wz);
+    // ROS_INFO_STREAM(std::fixed << std::setprecision(2)
+    //                << "wz:  " << std::setw(6) << twist.angular.z 
+    //                << " rad/s " << bar_wz);
+    // ROS_INFO_STREAM("     Range: [" << current_mode.min_wz << ", " << current_mode.max_wz << "]");
     
-    ROS_INFO_STREAM("=============================================\n");
+    // ROS_INFO_STREAM("=============================================\n");
   }
 
   void joyCB(const sensor_msgs::Joy::ConstPtr& msg) {

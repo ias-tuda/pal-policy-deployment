@@ -183,16 +183,24 @@ void velCmdCB(const geometry_msgs::Twist::ConstPtr& msg)
     observation[78] = msg->linear.y;
     observation[79] = msg->angular.z;
 
-    ROS_INFO("Velocity command: Vx: %f, Vy: %f, wz: %f\n", msg->linear.x, msg->linear.y, msg->angular.z);
+    // ROS_INFO("Velocity command: Vx: %f, Vy: %f, wz: %f\n", msg->linear.x, msg->linear.y, msg->angular.z);
 }
 
 
 int main(int argc,char** argv)
 {
-  ros::init(argc,argv,"pal_policy_deployer"); ros::NodeHandle nh("~");
+  ros::init(argc,argv,"pal_policy_deployer"); 
+  ros::NodeHandle nh("~");
+  
+  // Get version parameter (default to "v44" if not specified)
+  std::string model;
+  nh.param<std::string>("model", model, "v44");
   
   std::string pkg_root = ros::package::getPath("pal_policy_deployer");
-  std::string config_dir = pkg_root + "/models/loco/loco_v42_mjlab/";
+  std::string config_dir = pkg_root + "/models/loco/loco_" + model + "_mjlab/";
+  
+  ROS_INFO("Looking for ONNX model in: %s", config_dir.c_str());
+  
   std::string model_path;
   bool found = false;
   for (auto& entry : fs::directory_iterator(config_dir)) {
@@ -205,8 +213,7 @@ int main(int argc,char** argv)
     }
   }
   if (!found) {
-    ROS_FATAL("No ONNX model found in %s, and fallback '%s' doesn't exist.",
-              config_dir.c_str(), model_path.c_str());
+    ROS_FATAL("No ONNX model found in %s", config_dir.c_str());
     return 1;
   }
 
