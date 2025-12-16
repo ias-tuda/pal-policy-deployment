@@ -1,11 +1,11 @@
 <launch>
   <!-- Choose which pipeline to deploy -->
-  <arg name="policy" default="balance"
-       doc="Which policy to run: balance | loco | loco_v21 | reach | loco_v42" />
+  <arg name="policy" default="loco_mjlab"
+       doc="Which policy to run: loco_mjlab | loco_ilab | loco_v21" />
   
   <!-- Argument for model version -->
   <arg name="model" default="v44" 
-       doc="Model version to load (e.g., v44, v45, v50)" />
+       doc="Model version to load for loco_mjlab or loco_ilab (e.g., v44, v45, v50)" />
   
   <!-- Dynamically include the corresponding launch file and pass the model -->
   <include file="$(find pal_policy_deployer)/launch/kang_$(arg policy)_deployer.launch">
