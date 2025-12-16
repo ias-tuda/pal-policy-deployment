@@ -24,24 +24,6 @@ include_directories(
 link_directories(/opt/onnxruntime/lib)
 ########################
 
-
-
-add_executable(${PROJECT_NAME}_reach_node src/inferer_kang_reach_node.cpp)
-target_link_libraries(${PROJECT_NAME}_reach_node
-  ${catkin_LIBRARIES}
-  ${Boost_FILESYSTEM_LIBRARY}
-  ${Boost_SYSTEM_LIBRARY}
-  onnxruntime
-)
-
-add_executable(${PROJECT_NAME}_balance_node src/inferer_kang_balance_node.cpp)
-target_link_libraries(${PROJECT_NAME}_balance_node
-  ${catkin_LIBRARIES}
-  ${Boost_FILESYSTEM_LIBRARY}
-  ${Boost_SYSTEM_LIBRARY}
-  onnxruntime
-)
-
 add_executable(${PROJECT_NAME}_loco_node src/kang_loco_node.cpp)
 target_link_libraries(${PROJECT_NAME}_loco_node
   ${catkin_LIBRARIES}
@@ -59,6 +41,6 @@ target_link_libraries(${PROJECT_NAME}_loco_node_v21
 )
 
 
-install(TARGETS ${PROJECT_NAME}_reach_node ${PROJECT_NAME}_balance_node ${PROJECT_NAME}_loco_node ${PROJECT_NAME}_loco_node_v21 
+install(TARGETS ${PROJECT_NAME}_loco_node ${PROJECT_NAME}_loco_node_v21 
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

@@ -1,5 +1,6 @@
 <launch>
   <!-- Start the preprocessor -->
+  <arg name="model" default="v44" />
   <!-- <node
     pkg="pal_policy_preprocessor"
     type="pal_policy_preprocessor_loco_node"
