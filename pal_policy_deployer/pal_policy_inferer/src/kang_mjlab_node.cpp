@@ -460,9 +460,13 @@ int main(int argc, char** argv) {
     // Get model parameter
     std::string model;
     nh.param<std::string>("model", model, "v44");
+
+    // Get task parameter
+    std::string task;
+    nh.param<std::string>("task", task, "loco");
     
     std::string pkg_root = ros::package::getPath("pal_policy_deployer");
-    std::string config_dir = pkg_root + "/models/loco/loco_" + model + "_mjlab/";
+    std::string config_dir = pkg_root + "/models/" + task + "/" + task + "_" + model + "_mjlab/";
     
     ROS_INFO("Looking for ONNX model in: %s", config_dir.c_str());
     

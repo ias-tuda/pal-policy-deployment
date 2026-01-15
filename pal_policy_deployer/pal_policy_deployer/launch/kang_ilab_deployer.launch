@@ -1,6 +1,7 @@
 <launch>
   <!-- Start the preprocessor -->
-  <arg name="model" default="v44" />
+  <arg name="model" default="v21" />
+  <arg name="task" default="loco" />
   <!-- <node
     pkg="pal_policy_preprocessor"
     type="pal_policy_preprocessor_loco_node"
@@ -10,8 +11,8 @@
 
   <node
     pkg="pal_policy_inferer"
-    type="pal_policy_inferer_loco_node_v21"
-    name="pal_policy_inferer_loco_v21"
+    type="pal_policy_inferer_loco_node_$(arg model)"
+    name="pal_policy_inferer_loco_$(arg model)"
     output="screen"
   />
 

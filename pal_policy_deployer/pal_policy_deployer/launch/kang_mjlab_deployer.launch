@@ -1,13 +1,15 @@
 <launch>
   <!-- Argument for model version -->
   <arg name="model" default="v44" />
+  <arg name="task" default="loco" />
   
   <node
     pkg="pal_policy_inferer"
-    type="pal_policy_inferer_loco_node"
-    name="pal_policy_inferer_loco_node"
+    type="pal_policy_inferer_mjlab_node"
+    name="pal_policy_inferer_mjlab_node"
     output="screen">
     <param name="model" value="$(arg model)" />
+    <param name="task" value="$(arg task)" />
   </node>
   
   <!-- <node 

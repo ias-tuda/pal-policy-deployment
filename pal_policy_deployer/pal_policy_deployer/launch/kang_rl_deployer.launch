@@ -1,14 +1,20 @@
 <launch>
   <!-- Choose which pipeline to deploy -->
-  <arg name="policy" default="loco_mjlab"
-       doc="Which policy to run: loco_mjlab | loco_ilab | loco_v21" />
+  <arg name="lab" default="mjlab"
+       doc="Which training training simulator was used: mjlab | ilab" />
+
+  <arg name="task" default="loco"
+       doc="Which task to run: loco | fall" />
+
+  <!-- ilab v21 is a sure one after 39, its all mjlab except 41 i believe -->
   
   <!-- Argument for model version -->
   <arg name="model" default="v44" 
        doc="Model version to load for loco_mjlab or loco_ilab (e.g., v44, v45, v50)" />
   
   <!-- Dynamically include the corresponding launch file and pass the model -->
-  <include file="$(find pal_policy_deployer)/launch/kang_$(arg policy)_deployer.launch">
+  <include file="$(find pal_policy_deployer)/launch/kang_$(arg lab)_deployer.launch">
     <arg name="model" value="$(arg model)" />
+    <arg name="task" value="$(arg task)" />
   </include>
 </launch>
