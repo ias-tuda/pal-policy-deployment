@@ -1,32 +1,34 @@
 # pal_policy_deployer
 
-**WIP:** Currently, only 3 policies are available, and only for Kang.
+ROS package to deploy mjlab RL policies on KANGAROO.
 
-To run:
+## Setup
 
-```bash
-roslaunch pal_policy_deployer kang_rl_deployer.launch policy:=(loco|reach|balance)
+Add your ONNX model following this structure:
+```
+pal_policy_deployer/pal_policy_deployer/models/{task}/{task}_v{version}_mjlab/
 ```
 
-- **pal_policy_deployer**: Package containing the models and launch files. Installing it will also install the two other packages.
-- **pal_policy_inferer**: Package containing the nodes for running policy inference and sending position references.
-- **pal_policy_preprocessor**: Package containing the nodes for generating observation inputs and publishing them to a topic.
+Example for locomotion v60:
+```
+models/loco/loco_v60_mjlab/
+```
 
-### Available RL Nodes
+## Usage
 
-- Kang Reach
-- Kang Balance
-- (WIP) Kang Loco → validated only in sim2sim
+Launch the deployer:
+```bash
+roslaunch pal_policy_deployer kang_rl_deployer.launch model:=v60 task:=loco lab:=mjlab
+```
 
-### TODO
-
-P0
-- Retrain balance to have the correct offset
-- Find a way to make obs size dynamic 
-- Make balance and loco inferer node the same
-
-P1
-- Retrain reach, balance and loco to use the arms as well
-- Clean reach inferer and preprocessor node
-- Make reach inferer node the same as the other as well
-- Find a way to make the preprocessor be the same 
+Send velocity commands:
+```bash
+rostopic pub -1 /cmd_vel geometry_msgs/Twist "linear:
+  x: 0.5
+  y: 0.0
+  z: 0.0
+angular:
+  x: 0.0
+  y: 0.0
+  z: 0.0"
+```

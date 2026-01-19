@@ -1,0 +1,24 @@
+<launch>
+  <!-- Argument for model version -->
+  <arg name="model" default="v44" />
+  <arg name="task" default="loco" />
+  
+  <node
+    pkg="pal_policy_inferer"
+    type="pal_policy_inferer_mjlab_node"
+    name="pal_policy_inferer_mjlab_node"
+    output="screen">
+    <param name="model" value="$(arg model)" />
+    <param name="task" value="$(arg task)" />
+  </node>
+  
+  <!-- <node 
+    pkg="pal_policy_preprocessor" 
+    type="joy_twist_accumulator" 
+    name="joy_twist_accumulator" 
+    output="screen"
+  /> -->
+  
+  <!-- Bring up the subscriber controller -->
+  <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch" />
+</launch>
