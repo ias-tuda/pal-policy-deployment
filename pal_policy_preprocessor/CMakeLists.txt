@@ -25,32 +25,17 @@ include_directories(
 link_directories(/opt/onnxruntime/lib)
 ########################
 
-
-add_executable(${PROJECT_NAME}_reach_node src/preprocessor_kang_reach_node.cpp)
-target_link_libraries(${PROJECT_NAME}_reach_node ${catkin_LIBRARIES} ${Boost_LIBRARIES})
-
-add_executable(${PROJECT_NAME}_balance_node src/preprocessor_kang_balance_node.cpp)
-target_link_libraries(${PROJECT_NAME}_balance_node ${catkin_LIBRARIES} ${Boost_LIBRARIES})
-
-add_executable(${PROJECT_NAME}_loco_node src/preprocessor_kang_loco_node.cpp)
-target_link_libraries(${PROJECT_NAME}_loco_node ${catkin_LIBRARIES} ${Boost_LIBRARIES})
-
-# Interactive marker node for ONNX inference
-
-add_executable(${PROJECT_NAME}_interactive_node src/interactive_marker_node.cpp)
-target_link_libraries(${PROJECT_NAME}_interactive_node ${catkin_LIBRARIES} ${Boost_LIBRARIES})
-
-
+add_executable(interactive_marker src/interactive_marker_node.cpp)
+target_link_libraries(interactive_marker ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 add_executable(joy_twist_accumulator src/joy_twist_accumulator.cpp)
 target_link_libraries(joy_twist_accumulator ${catkin_LIBRARIES})
 add_dependencies(joy_twist_accumulator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-
 ##############
 
 
 ## Mark executables for installation
-install(TARGETS ${PROJECT_NAME}_reach_node ${PROJECT_NAME}_balance_node ${PROJECT_NAME}_loco_node
+install(TARGETS interactive_marker joy_twist_accumulator
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

@@ -1,0 +1,28 @@
+<launch>
+  <!-- Start the preprocessor -->
+  <arg name="model" default="v21" />
+  <arg name="task" default="loco" />
+  <!-- <node
+    pkg="pal_policy_preprocessor"
+    type="pal_policy_preprocessor_loco_node"
+    name="pal_policy_preprocessor_loco"
+    output="screen"
+  /> -->
+
+  <node
+    pkg="pal_policy_inferer"
+    type="pal_policy_inferer_loco_node_$(arg model)"
+    name="pal_policy_inferer_loco_$(arg model)"
+    output="screen"
+  />
+
+  <!-- <node 
+    pkg="pal_policy_preprocessor" 
+    type="joy_twist_accumulator" 
+    name="joy_twist_accumulator" 
+    output="screen"
+  /> -->
+
+  <!-- Bring up the subscriber controller -->
+  <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch" />
+</launch>
