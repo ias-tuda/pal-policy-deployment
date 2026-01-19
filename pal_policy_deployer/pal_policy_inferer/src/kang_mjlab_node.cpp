@@ -133,24 +133,28 @@ int getObservationTermDim(const std::string& term_name) {
     if (term_name == "base_ang_vel") return 3;
     if (term_name == "base_lin_vel") return 3;
     if (term_name == "base_lin_acc") return 3;
-    if (term_name == "projected_gravity") return 3;
-    if (term_name == "command") return 3;  // twist command: vx, vy, wz
+    if (term_name == "imu_projected_gravity") return 3;
+    if (term_name == "command") return 3;
     if (term_name == "joint_pos") return static_cast<int>(config.joint_names.size());
     if (term_name == "joint_vel") return static_cast<int>(config.joint_names.size());
     if (term_name == "actions") return static_cast<int>(config.action_joint_names.size());
     
-    ROS_WARN("Unknown observation term: %s, assuming dim=3", term_name.c_str());
-    return 3;
+    return -1;  // Unknown term
 }
 
 // ---- OBSERVATION TERM INITIALIZATION ----
-
 void initializeObservationTerms() {
     obs_terms.clear();
     obs_term_order.clear();
     
     for (const auto& term_name : config.observation_names) {
         int dim = getObservationTermDim(term_name);
+        if (dim < 0) {
+            ROS_FATAL("Unknown observation term: '%s'. Add it to getObservationTermDim() and implement its callback.", 
+                      term_name.c_str());
+            ros::shutdown();
+            return;
+        }
         auto term = std::make_shared<ObservationTerm>(term_name, dim);
         term->initHistory(config.history_length);
         obs_terms[term_name] = term;
@@ -398,18 +402,10 @@ void imuCB(const sensor_msgs::Imu::ConstPtr& msg) {
         term->current[2] = msg->linear_acceleration.z;
     }
     
-    // Update projected_gravity term (gravity vector in body frame)
-    static const Eigen::Quaterniond imu_correction(
-        Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX())  // 180° around X
-        // or try UnitY() if X doesn't work
-    );
 
-    // Then in your callback:
-    if (obs_terms.find("projected_gravity") != obs_terms.end()) {
-        auto& term = obs_terms["projected_gravity"];
-        
-        // Apply IMU mounting correction technically for 53 but didnt work
-        Eigen::Quaterniond corrected_orientation = imu_orientation * imu_correction;
+    // Update imu_projected_gravity term
+    if (obs_terms.find("imu_projected_gravity") != obs_terms.end()) {
+        auto& term = obs_terms["imu_projected_gravity"];
         
         Eigen::Vector3d gravity_world(0.0, 0.0, -1.0);
         Eigen::Vector3d gravity_body = imu_orientation.conjugate() * gravity_world;
