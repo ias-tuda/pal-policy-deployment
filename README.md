@@ -4,6 +4,8 @@ ROS package to deploy mjlab RL policies on KANGAROO.
 
 ## Setup
 
+Use ONNX 1.17.0 and kangaroo_robot package with the louis/gains-rl branch.
+
 Add your ONNX model following this structure:
 ```
 pal_policy_deployer/pal_policy_deployer/models/{task}/{task}_v{version}_mjlab/
