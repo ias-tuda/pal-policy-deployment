@@ -1,7 +1,34 @@
 # pal_policy_deployer
 
-Package to deploy policies on KANGAROO. 
+ROS package to deploy mjlab RL policies on KANGAROO.
 
-To run a policies, you only need to add your onnx file in :
+## Setup
 
-pal_policy_deployer/pal_policy_deployer/models/loco/loco_v60_mjlab
+Add your ONNX model following this structure:
+```
+pal_policy_deployer/pal_policy_deployer/models/{task}/{task}_v{version}_mjlab/
+```
+
+Example for locomotion v60:
+```
+models/loco/loco_v60_mjlab/
+```
+
+## Usage
+
+Launch the deployer:
+```bash
+roslaunch pal_policy_deployer kang_rl_deployer.launch model:=v60 task:=loco lab:=mjlab
+```
+
+Send velocity commands:
+```bash
+rostopic pub -1 /cmd_vel geometry_msgs/Twist "linear:
+  x: 0.5
+  y: 0.0
+  z: 0.0
+angular:
+  x: 0.0
+  y: 0.0
+  z: 0.0"
+```
