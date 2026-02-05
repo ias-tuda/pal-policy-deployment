@@ -26,7 +26,8 @@
   <depend>interactive_markers</depend>
   <depend>sensor_msgs</depend>
   <depend>eigen</depend>
-
+  <depend>rospy</depend>
+  <depend>nav_msgs</depend>
   <export>
 
   </export>
