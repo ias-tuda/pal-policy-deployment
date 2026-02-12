@@ -10,6 +10,8 @@ find_package(catkin REQUIRED COMPONENTS
   interactive_markers
 )
 
+find_package(ZLIB REQUIRED)
+
 catkin_package(
   CATKIN_DEPENDS
     roscpp std_msgs message_filters visualization_msgs interactive_markers
@@ -24,8 +26,10 @@ include_directories(
 link_directories(/opt/onnxruntime/lib)
 ########################
 
-add_executable(${PROJECT_NAME}_mjlab_node src/kang_mjlab_node.cpp)
+add_executable(${PROJECT_NAME}_mjlab_node src/kang_mjlab_node.cpp src/cnpy.cpp)
+target_include_directories(${PROJECT_NAME}_mjlab_node PRIVATE ${ZLIB_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME}_mjlab_node
+  ${ZLIB_LIBRARIES} 
   ${catkin_LIBRARIES}
   ${Boost_FILESYSTEM_LIBRARY}
   ${Boost_SYSTEM_LIBRARY}
@@ -44,3 +48,4 @@ target_link_libraries(${PROJECT_NAME}_ilab_node_v21
 install(TARGETS ${PROJECT_NAME}_mjlab_node ${PROJECT_NAME}_ilab_node_v21 
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+
