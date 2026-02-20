@@ -8,6 +8,11 @@ ament_auto_add_executable(${PROJECT_NAME}_node src/postprocessor.cpp
 src/postprocessor_tiago_reaching.cpp
 )
 
+ament_auto_add_executable(${PROJECT_NAME}_kangaroo_locomotion
+  src/postprocessor.cpp
+  src/postprocessor_kangaroo_locomotion.cpp
+)
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config

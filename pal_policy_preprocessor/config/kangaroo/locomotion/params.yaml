@@ -1,0 +1,19 @@
+pal_policy_preprocessor_kangaroo_locomotion:
+  ros__parameters:
+    # Topics
+    joint_states_topic: "/joint_states"
+    imu_topic: "/imu_sensor_broadcaster/imu"
+    odom_topic: "/odom"
+    cmd_vel_topic: "/cmd_vel"
+    last_action_topic: "/locomotion_kangaroo/last_action"
+
+    # Observation debug dump (prints ordered vector indices, names, values, and source topic/callback)
+    debug_print_observation_vector: true
+    debug_print_every_n_cycles: 50
+    
+    excluded_action_joints:
+      - "gripper_right_outer_finger_right_joint"
+      - "gripper_right_outer_finger_left_joint"
+      - "gripper_left_outer_finger_right_joint"
+      - "gripper_left_outer_finger_left_joint"
+  # reference_type: "pal_references::${REFERENCE_TYPE}" # TO DO: implement references

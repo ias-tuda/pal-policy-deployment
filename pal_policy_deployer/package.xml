@@ -18,6 +18,10 @@
   <exec_depend>pal_policy_inferer</exec_depend>
   <exec_depend>pal_policy_preprocessor</exec_depend>
   <exec_depend>pal_policy_postprocessor</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>kangaroo_mujoco</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

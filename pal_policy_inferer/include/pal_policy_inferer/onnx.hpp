@@ -2,7 +2,7 @@
 
 #include "pal_policy_inferer/inferer.hpp"
 
-#include <onnxruntime_cxx_api.h>
+#include <onnxruntime/onnxruntime_cxx_api.h>
 
 #include <array>
 #include <memory>

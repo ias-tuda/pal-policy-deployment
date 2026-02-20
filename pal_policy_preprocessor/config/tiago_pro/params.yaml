@@ -1,4 +1,4 @@
-pal_policy_preprocessor:
+pal_policy_preprocessor_tiago_reaching:
   ros__parameters:
     excluded_action_joints:
       - "gripper_right_outer_finger_right_joint"
