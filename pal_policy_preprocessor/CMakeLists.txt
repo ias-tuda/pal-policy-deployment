@@ -9,10 +9,14 @@ ament_auto_add_executable(${PROJECT_NAME}_kangaroo_locomotion
   src/preprocessor_kangaroo_locomotion.cpp
 )
 
+target_link_libraries(${PROJECT_NAME}_kangaroo_locomotion  onnxruntime)
+
 ament_auto_add_executable(${PROJECT_NAME}_tiago_reaching
   src/preprocessor.cpp
   src/preprocessor_tiago_reaching.cpp
 )
+
+target_link_libraries(${PROJECT_NAME}_tiago_reaching  onnxruntime)
 
 ament_auto_add_executable(interactive_marker_node
   src/interactive_marker_node.cpp

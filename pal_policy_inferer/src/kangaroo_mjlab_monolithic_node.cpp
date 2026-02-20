@@ -465,7 +465,7 @@ private:
       std::lock_guard<std::mutex> lock(observation_mutex_);
       for (int i = 0; i < config_.action_dim; ++i) {
         const size_t k = static_cast<size_t>(i);
-        tau_[k] = stiffness_aligned_[k] * (action_[k] - qpos_action_[k]) + damping_aligned_[k] * qvel_action_[k];
+        tau_[k] = stiffness_aligned_[k] * (action_[k] - qpos_action_[k]) - damping_aligned_[k] * qvel_action_[k];
       }
     }
 
