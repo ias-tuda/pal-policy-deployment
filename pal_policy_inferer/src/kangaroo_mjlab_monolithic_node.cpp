@@ -5,6 +5,7 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
+#include <control_msgs/msg/multi_dof_command.hpp>
 
 #include <algorithm>
 #include <array>
@@ -123,6 +124,10 @@ public:
       default_damping,
       "joint_damping");
 
+    RCLCPP_INFO(this->get_logger(), "Stiffness and damping gains are : ");
+    for (size_t i = 0; i < stiffness_aligned_.size(); ++i) {
+      RCLCPP_INFO(this->get_logger(), "%s: {p: %f, i: 0.0, d: %f}", config_.action_joint_names[i].c_str(), stiffness_aligned_[i], damping_aligned_[i]);
+    }
     action_joint_to_action_index_.clear();
     for (size_t i = 0; i < config_.action_joint_names.size(); ++i) {
       action_joint_to_action_index_[config_.action_joint_names[i]] = i;
@@ -132,7 +137,8 @@ public:
     qvel_action_.assign(static_cast<size_t>(config_.action_dim), 0.0);
     tau_.assign(static_cast<size_t>(config_.action_dim), 0.0);
 
-    pub_cmd_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(command_topic_, 1);
+    // pub_cmd_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(command_topic_, 1);
+    pub_pid_ref_cmd_ = this->create_publisher<control_msgs::msg::MultiDOFCommand>(command_topic_, 1);
 
     sub_js_ = this->create_subscription<sensor_msgs::msg::JointState>(
       joint_states_topic_, 1,
@@ -151,9 +157,11 @@ public:
       RCLCPP_INFO(this->get_logger(), "Subscribed to %s for base_lin_vel", odom_topic_.c_str());
     }
 
-    msg_command_.data.assign(static_cast<size_t>(config_.action_dim), 0.0);
+    msg_command_.dof_names.assign(config_.action_joint_names.begin(), config_.action_joint_names.end());
+    msg_command_.values.assign(static_cast<size_t>(config_.action_dim), 0.0);
+    msg_command_.values_dot.assign(static_cast<size_t>(config_.action_dim), 0.0);
 
-    const auto period = std::chrono::microseconds(1000);
+    const auto period = std::chrono::milliseconds(20);
     timer_ = this->create_wall_timer(
       period,
       std::bind(&KangarooMjlabMonolithicNode::timerCB, this));
@@ -469,8 +477,9 @@ private:
       }
     }
 
-    msg_command_.data = tau_;
-    pub_cmd_->publish(msg_command_);
+    msg_command_.values = action_;
+    
+    pub_pid_ref_cmd_->publish(msg_command_);
   }
 
   void jsCB(const sensor_msgs::msg::JointState::SharedPtr msg)
@@ -587,9 +596,9 @@ private:
   std::vector<double> stiffness_aligned_;
   std::vector<double> damping_aligned_;
   std::unordered_map<std::string, size_t> action_joint_to_action_index_;
-  std_msgs::msg::Float64MultiArray msg_command_;
+  control_msgs::msg::MultiDOFCommand msg_command_;
 
-  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_cmd_;
+  rclcpp::Publisher<control_msgs::msg::MultiDOFCommand>::SharedPtr pub_pid_ref_cmd_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_js_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_cmd_;

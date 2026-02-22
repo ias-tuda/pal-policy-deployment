@@ -199,7 +199,7 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
             "imu_topic": "/imu_sensor_broadcaster/imu",
             "cmd_vel_topic": "/cmd_vel",
             "odom_topic": "/odom",
-            "command_topic": "/rl_controller/commands",
+            "command_topic": "/rl_impedance_controller/reference",
         }],
     )
 
@@ -230,7 +230,7 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
     # Fallback: spawn immediately when PID override is disabled
     rl_controller_direct = GroupAction(
         [generate_load_controller_launch_description(
-            controller_name='rl_controller',
+            controller_name='rl_impedance_controller',
             controller_params_file=os.path.join(
                 pkg_share_folder,
                 'config', 'kangaroo_rl_controller.yaml'))
