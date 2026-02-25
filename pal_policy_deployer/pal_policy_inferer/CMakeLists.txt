@@ -26,7 +26,7 @@ include_directories(
 link_directories(/opt/onnxruntime/lib)
 ########################
 
-add_executable(${PROJECT_NAME}_mjlab_node src/kang_mjlab_node.cpp src/cnpy.cpp)
+add_executable(${PROJECT_NAME}_mjlab_node src/kang_mjlab_node.cpp)
 target_include_directories(${PROJECT_NAME}_mjlab_node PRIVATE ${ZLIB_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME}_mjlab_node
   ${ZLIB_LIBRARIES} 

@@ -13,7 +13,6 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <onnxruntime_cxx_api.h>
 #include <boost/filesystem.hpp>
-#include <cnpy.h>
 // core libraries
 #include <vector>
 #include <algorithm>
@@ -54,25 +53,17 @@ struct ObservationTerm {
 };
 
 // ---- AUTOREGRESSIVE MOTION STATE ----
-// Holds the current command state, initialized from NPZ, then updated from ONNX outputs each step.
+// Holds the current command state, initialized from robot, then updated from ONNX outputs each step.
 
 struct MotionState {
     // Current command (updated autoregressively from ONNX outputs)
     std::vector<double> joint_pos;      // [num_joints]
     std::vector<double> joint_vel;      // [num_joints]
-    std::vector<double> body_pos_w;     // [num_bodies * 3] flattened
-    std::vector<double> body_quat_w;    // [num_bodies * 4] flattened, [w,x,y,z] per body
 
     int num_joints = 0;
-    int num_bodies = 0;
-    int anchor_body_index = 0;
     int timestep = 0;
     int max_timestep = 0;
     bool loaded = false;
-    bool aligned = false;
-
-    // Initial alignment (yaw-only rotation to align motion start to robot start)
-    Eigen::Quaterniond alignment_rotation = Eigen::Quaterniond::Identity();
 
     // Get command vector: [joint_pos, joint_vel]
     std::vector<double> getCommand() const {
@@ -85,37 +76,12 @@ struct MotionState {
 
     int commandDim() const { return num_joints * 2; }
 
-    // Get the anchor body quaternion (world frame, aligned), as Eigen quaternion
-    Eigen::Quaterniond getAnchorQuat() const {
-        int off = anchor_body_index * 4;
-        // body_quat_w stored as [w, x, y, z]
-        Eigen::Quaterniond q(body_quat_w[off], body_quat_w[off+1],
-                             body_quat_w[off+2], body_quat_w[off+3]);
-        // Apply initial alignment
-        return alignment_rotation * q;
-    }
-
-    // Get the anchor body position (world frame, aligned)
-    Eigen::Vector3d getAnchorPos() const {
-        int off = anchor_body_index * 3;
-        Eigen::Vector3d p(body_pos_w[off], body_pos_w[off+1], body_pos_w[off+2]);
-        return alignment_rotation * p;  // rotate position too
-    }
-
     // Update from ONNX outputs after inference
     void updateFromOutputs(const float* out_joint_pos, int nj,
-                           const float* out_joint_vel, int nj2,
-                           const float* out_body_pos, int nb3,
-                           const float* out_body_quat, int nb4) {
+                           const float* out_joint_vel, int nj2) {
         for (int i = 0; i < nj && i < num_joints; ++i) {
             joint_pos[i] = out_joint_pos[i];
             joint_vel[i] = out_joint_vel[i];
-        }
-        for (int i = 0; i < nb3 && i < num_bodies * 3; ++i) {
-            body_pos_w[i] = out_body_pos[i];
-        }
-        for (int i = 0; i < nb4 && i < num_bodies * 4; ++i) {
-            body_quat_w[i] = out_body_quat[i];
         }
     }
 };
@@ -138,8 +104,6 @@ struct PolicyConfig {
     std::vector<double> joint_stiffness;
     std::vector<double> joint_damping;
     std::vector<std::string> observation_names;
-    std::vector<std::string> body_names;
-    std::string anchor_body_name;
     int obs_dim;
     int action_dim;
     int history_length;
@@ -150,8 +114,6 @@ struct PolicyConfig {
     int out_idx_actions = -1;
     int out_idx_joint_pos = -1;
     int out_idx_joint_vel = -1;
-    int out_idx_body_pos_w = -1;
-    int out_idx_body_quat_w = -1;
 };
 
 // ---- GLOBALS ----
@@ -164,6 +126,10 @@ std::vector<std::string> obs_term_order;
 // IMU-derived values
 Eigen::Quaterniond imu_orientation(1.0, 0.0, 0.0, 0.0);
 bool imu_received = false;
+
+// Robot state tracking for imitation initialization
+sensor_msgs::JointState latest_joint_state;
+bool joint_state_received = false;
 
 std::mutex observation_mutex;
 
@@ -207,159 +173,42 @@ bool isExcludedJoint(const std::string& joint_name) {
            != excluded_action_joints.end();
 }
 
-// Extract yaw angle from quaternion
-double extractYaw(const Eigen::Quaterniond& q) {
-    // yaw = atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
-    double siny_cosp = 2.0 * (q.w() * q.z() + q.x() * q.y());
-    double cosy_cosp = 1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z());
-    return std::atan2(siny_cosp, cosy_cosp);
-}
+// ---- INITIALIZE MOTION FROM ROBOT STATE ----
 
-// Create quaternion from yaw angle only
-Eigen::Quaterniond yawQuaternion(double yaw) {
-    return Eigen::Quaterniond(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
-}
-
-// ---- MOTION LOADER (NPZ → initial state only) ----
-
-bool loadMotionInitialState(const std::string& config_dir) {
-    std::string npz_path;
-    bool found = false;
-    for (auto& entry : fs::directory_iterator(config_dir)) {
-        fs::path p = entry.path();
-        if (fs::is_regular_file(p) && p.extension() == ".npz") {
-            npz_path = p.string();
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
-        ROS_FATAL("No .npz motion file found in %s", config_dir.c_str());
-        return false;
-    }
-    ROS_INFO("Loading motion initial state from: %s", npz_path.c_str());
-
-    cnpy::npz_t npz = cnpy::npz_load(npz_path);
-
-    // joint_pos: (T, num_joints), joint_vel: (T, num_joints)
-    if (npz.find("joint_pos") == npz.end() || npz.find("joint_vel") == npz.end()) {
-        ROS_FATAL("Motion .npz missing 'joint_pos' or 'joint_vel'");
+bool initializeMotionFromRobot() {
+    if (!joint_state_received) {
+        ROS_WARN("Waiting for joint state to initialize motion...");
         return false;
     }
 
-    cnpy::NpyArray& arr_pos = npz["joint_pos"];
-    cnpy::NpyArray& arr_vel = npz["joint_vel"];
-    motion.num_joints = static_cast<int>(arr_pos.shape[1]);
-    motion.max_timestep = static_cast<int>(arr_pos.shape[0]);
+    motion.num_joints = static_cast<int>(config.joint_names.size());
+    motion.joint_pos.resize(motion.num_joints, 0.0);
+    motion.joint_vel.resize(motion.num_joints, 0.0);
 
-    // Load first frame only
-    const float* pos_data = arr_pos.data<float>();
-    const float* vel_data = arr_vel.data<float>();
-    motion.joint_pos.resize(motion.num_joints);
-    motion.joint_vel.resize(motion.num_joints);
+    // Map current robot joint states to motion state
     for (int j = 0; j < motion.num_joints; ++j) {
-        motion.joint_pos[j] = pos_data[j];
-        motion.joint_vel[j] = vel_data[j];
-    }
-
-    // body_pos_w: (T, num_bodies, 3), body_quat_w: (T, num_bodies, 4)
-    if (npz.find("body_pos_w") == npz.end() || npz.find("body_quat_w") == npz.end()) {
-        ROS_FATAL("Motion .npz missing 'body_pos_w' or 'body_quat_w'");
-        return false;
-    }
-
-    cnpy::NpyArray& arr_bpos = npz["body_pos_w"];
-    cnpy::NpyArray& arr_bquat = npz["body_quat_w"];
-    int npz_num_bodies = static_cast<int>(arr_bpos.shape[1]);
-
-    const float* bpos_data = arr_bpos.data<float>();
-    const float* bquat_data = arr_bquat.data<float>();
-
-    // Load first frame of body data
-    // Note: NPZ has ALL bodies (e.g. 33), but the ONNX model outputs only the
-    // subset specified in body_names metadata. We need to load the subset matching
-    // config.body_names. However, we don't know the NPZ body name ordering.
-    // The ONNX model outputs are already in the body_names order, so we just need
-    // the initial state in that same order. For now, load ALL bodies from NPZ frame 0
-    // and the model will output in its own body_names order after the first step.
-    //
-    // For the initial frame, we just need the anchor body's pose. We'll store all
-    // NPZ bodies and find the anchor by matching the body_names metadata.
-
-    // Store full NPZ body data for frame 0 (used only for initial alignment)
-    // Then we initialize motion.body_pos_w/body_quat_w with the model's body count
-    motion.num_bodies = static_cast<int>(config.body_names.size());
-
-    // We need to find the anchor body in the NPZ. The ONNX metadata gives us
-    // anchor_body_name and body_names. The anchor index within body_names:
-    motion.anchor_body_index = 0;
-    for (size_t i = 0; i < config.body_names.size(); ++i) {
-        if (config.body_names[i] == config.anchor_body_name) {
-            motion.anchor_body_index = static_cast<int>(i);
-            break;
+        const std::string& joint_name = config.joint_names[j];
+        for (size_t i = 0; i < latest_joint_state.name.size(); ++i) {
+            if (latest_joint_state.name[i] == joint_name) {
+                motion.joint_pos[j] = latest_joint_state.position[i];
+                if (i < latest_joint_state.velocity.size()) {
+                    motion.joint_vel[j] = latest_joint_state.velocity[i];
+                }
+                break;
+            }
         }
     }
 
-    // For initial alignment, we need the anchor body pose from the NPZ.
-    // The NPZ body order matches the MuJoCo model body order.
-    // body_names[0] = "base_link" corresponds to some index in the NPZ.
-    // Since the ONNX model was trained with find_bodies(body_names), the NPZ
-    // uses the same MuJoCo body ordering. For KANGAROO, base_link is typically
-    // body 0 in the NPZ (or the first moving body).
-    //
-    // We'll use a ROS param for the NPZ anchor index, defaulting to 0.
-    int npz_anchor_idx = 0;
+    // Get max_timestep from param or use default
     ros::NodeHandle nh("~");
-    nh.param<int>("npz_anchor_body_index", npz_anchor_idx, 0);
-
-    if (npz_anchor_idx >= npz_num_bodies) {
-        ROS_WARN("npz_anchor_body_index=%d out of range [0,%d), using 0", npz_anchor_idx, npz_num_bodies);
-        npz_anchor_idx = 0;
-    }
-
-    // Store initial anchor pose from NPZ for alignment
-    int bpos_off = npz_anchor_idx * 3;
-    Eigen::Vector3d init_anchor_pos(bpos_data[bpos_off], bpos_data[bpos_off+1], bpos_data[bpos_off+2]);
-    int bquat_off = npz_anchor_idx * 4;
-    // NPZ stores [w, x, y, z]
-    Eigen::Quaterniond init_anchor_quat(
-        bquat_data[bquat_off], bquat_data[bquat_off+1],
-        bquat_data[bquat_off+2], bquat_data[bquat_off+3]
-    );
-
-    double init_yaw = extractYaw(init_anchor_quat);
-    // alignment_rotation will be set later when we get the first IMU reading
-    // For now store the initial motion yaw
-    motion.alignment_rotation = yawQuaternion(-init_yaw);  // remove motion's initial yaw
-
-    // Initialize body arrays with zeros (will be populated after first inference)
-    // For the very first step, we need the anchor body's pose from NPZ
-    motion.body_pos_w.resize(motion.num_bodies * 3, 0.0);
-    motion.body_quat_w.resize(motion.num_bodies * 4, 0.0);
-    // Set identity quaternions
-    for (int b = 0; b < motion.num_bodies; ++b) {
-        motion.body_quat_w[b * 4 + 0] = 1.0;  // w
-    }
-    // Set anchor body pose from NPZ (in the model's body_names ordering)
-    {
-        int a = motion.anchor_body_index;
-        motion.body_pos_w[a*3+0] = init_anchor_pos.x();
-        motion.body_pos_w[a*3+1] = init_anchor_pos.y();
-        motion.body_pos_w[a*3+2] = init_anchor_pos.z();
-        motion.body_quat_w[a*4+0] = init_anchor_quat.w();
-        motion.body_quat_w[a*4+1] = init_anchor_quat.x();
-        motion.body_quat_w[a*4+2] = init_anchor_quat.y();
-        motion.body_quat_w[a*4+3] = init_anchor_quat.z();
-    }
+    nh.param<int>("max_timestep", motion.max_timestep, 1000);
 
     motion.timestep = 0;
     motion.loaded = true;
 
-    ROS_INFO("Motion initial state loaded: %d joints, %d tracked bodies, max_timestep=%d",
-             motion.num_joints, motion.num_bodies, motion.max_timestep);
-    ROS_INFO("Initial anchor yaw: %.3f rad, anchor_body_index=%d",
-             init_yaw, motion.anchor_body_index);
-
+    ROS_INFO("Motion initialized from robot state: %d joints, max_timestep=%d",
+             motion.num_joints, motion.max_timestep);
+    
     return true;
 }
 
@@ -373,7 +222,6 @@ int getObservationTermDim(const std::string& term_name) {
     if (term_name == "joint_pos") return static_cast<int>(config.joint_names.size());
     if (term_name == "joint_vel") return static_cast<int>(config.joint_names.size());
     if (term_name == "actions") return static_cast<int>(config.action_joint_names.size());
-    if (term_name == "motion_anchor_ori_b") return 6;
 
     if (term_name == "command") {
         if (config.task == "imitation") {
@@ -446,10 +294,6 @@ bool loadPolicyConfig(const std::string& model_path) {
         config.joint_stiffness = parseDoubles(metadata_map["joint_stiffness"]);
     if (metadata_map.find("joint_damping") != metadata_map.end())
         config.joint_damping = parseDoubles(metadata_map["joint_damping"]);
-    if (metadata_map.find("anchor_body_name") != metadata_map.end())
-        config.anchor_body_name = metadata_map["anchor_body_name"];
-    if (metadata_map.find("body_names") != metadata_map.end())
-        config.body_names = splitString(metadata_map["body_names"], ',');
     
     // Build action joint names (exclude femur/knee passive joints)
     config.action_joint_names.clear();
@@ -495,10 +339,6 @@ bool loadPolicyConfig(const std::string& model_path) {
             config.out_idx_joint_pos = i;
         } else if (n == "joint_vel") {
             config.out_idx_joint_vel = i;
-        } else if (n == "body_pos_w") {
-            config.out_idx_body_pos_w = i;
-        } else if (n == "body_quat_w") {
-            config.out_idx_body_quat_w = i;
         }
     }
     
@@ -515,7 +355,7 @@ bool loadPolicyConfig(const std::string& model_path) {
         ROS_INFO("  Input %d: '%s' [%s]", i, name.get(), shape_ss.str().c_str());
     }
     
-    // For imitation, defer single_obs_dim calculation until after motion is loaded
+    // For imitation, defer single_obs_dim calculation until after motion is initialized
     // (because command dim depends on motion data)
     if (config.task != "imitation") {
         config.single_obs_dim = 0;
@@ -563,69 +403,22 @@ void updateAllHistory() {
     }
 }
 
-// ---- COMPUTE motion_anchor_ori_b ----
-// subtract_frame_transforms(robot_pos, robot_quat, anchor_pos, anchor_quat)
-// → relative orientation = quat_inv(robot_quat) * anchor_quat
-// → 6D rep = rotation_matrix[:, :2].flatten() (column-major: col0 then col1)
-
-void updateMotionAnchorOriB() {
-    if (obs_terms.find("motion_anchor_ori_b") == obs_terms.end()) return;
-    if (!motion.loaded) return;
-
-    auto& term = obs_terms["motion_anchor_ori_b"];
-
-    // Desired anchor orientation (world frame, with initial alignment applied)
-    Eigen::Quaterniond desired_quat = motion.getAnchorQuat();
-
-    // Current robot orientation from IMU (world frame)
-    Eigen::Quaterniond robot_quat = imu_orientation;
-
-    // Relative orientation: desired anchor in robot body frame
-    // = quat_inv(robot_quat) * desired_quat
-    Eigen::Quaterniond rel_quat = robot_quat.conjugate() * desired_quat;
-    Eigen::Matrix3d rot = rel_quat.toRotationMatrix();
-
-    // 6D representation: first two columns, flattened column-major
-    // mat[:, 0] then mat[:, 1]
-    term->current[0] = rot(0, 0);
-    term->current[1] = rot(1, 0);
-    term->current[2] = rot(2, 0);
-    term->current[3] = rot(0, 1);
-    term->current[4] = rot(1, 1);
-    term->current[5] = rot(2, 1);
-}
-
-// ---- SETUP INITIAL ALIGNMENT ----
-// Called once when first IMU reading arrives, to align motion yaw to robot yaw
-
-void setupAlignment() {
-    if (motion.aligned || !imu_received) return;
-
-    double robot_yaw = extractYaw(imu_orientation);
-
-    // motion.alignment_rotation currently = yaw(-init_motion_yaw)
-    // We want: alignment = yaw(robot_yaw) * yaw(-init_motion_yaw)
-    // This maps motion's initial yaw → robot's current yaw
-    motion.alignment_rotation = yawQuaternion(robot_yaw) * motion.alignment_rotation;
-    motion.aligned = true;
-
-    ROS_INFO("Motion aligned to robot yaw: %.3f rad", robot_yaw);
-}
-
 // ---- TIMER CALLBACK ----
 
 void timerCallback(const ros::TimerEvent&) {
+    // For imitation task, ensure motion is initialized from robot state
+    if (config.task == "imitation" && !motion.loaded) {
+        if (!initializeMotionFromRobot()) {
+            return;  // Wait for joint state
+        }
+    }
+
     std::vector<float> obs_input;
     float time_step_val = 0.0f;
     {
         std::lock_guard<std::mutex> lk(observation_mutex);
 
         if (config.task == "imitation" && motion.loaded) {
-            // Setup alignment on first IMU
-            if (!motion.aligned && imu_received) {
-                setupAlignment();
-            }
-
             // Update command obs from current motion state
             if (obs_terms.find("command") != obs_terms.end()) {
                 auto& term = obs_terms["command"];
@@ -634,9 +427,6 @@ void timerCallback(const ros::TimerEvent&) {
                     term->current[i] = cmd[i];
                 }
             }
-
-            // Update motion_anchor_ori_b
-            updateMotionAnchorOriB();
 
             // Timestep for the model
             time_step_val = static_cast<float>(motion.timestep);
@@ -688,20 +478,12 @@ void timerCallback(const ros::TimerEvent&) {
 
         // For imitation: update motion state autoregressively from ONNX outputs
         if (config.task == "imitation" && motion.loaded) {
-            if (config.out_idx_joint_pos >= 0 && config.out_idx_joint_vel >= 0 &&
-                config.out_idx_body_pos_w >= 0 && config.out_idx_body_quat_w >= 0) {
-                
+            if (config.out_idx_joint_pos >= 0 && config.out_idx_joint_vel >= 0) {
                 const float* out_jp = outputs[config.out_idx_joint_pos].GetTensorData<float>();
                 const float* out_jv = outputs[config.out_idx_joint_vel].GetTensorData<float>();
-                const float* out_bp = outputs[config.out_idx_body_pos_w].GetTensorData<float>();
-                const float* out_bq = outputs[config.out_idx_body_quat_w].GetTensorData<float>();
 
-                motion.updateFromOutputs(
-                    out_jp, motion.num_joints,
-                    out_jv, motion.num_joints,
-                    out_bp, motion.num_bodies * 3,
-                    out_bq, motion.num_bodies * 4
-                );
+                motion.updateFromOutputs(out_jp, motion.num_joints,
+                                        out_jv, motion.num_joints);
             }
 
             // Advance timestep
@@ -727,6 +509,12 @@ void timerCallback(const ros::TimerEvent&) {
 
 void jsCB(const sensor_msgs::JointState::ConstPtr& msg) {
     std::lock_guard<std::mutex> lk(observation_mutex);
+    
+    // Store latest for imitation initialization
+    if (!joint_state_received) {
+        latest_joint_state = *msg;
+        joint_state_received = true;
+    }
     
     if (obs_terms.find("joint_pos") != obs_terms.end()) {
         auto& term = obs_terms["joint_pos"];
@@ -852,27 +640,18 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Load ONNX metadata first (needed for body_names before loading motion)
+    // Load ONNX metadata
     if (!loadPolicyConfig(model_path)) {
         ROS_FATAL("Failed to load policy configuration from ONNX metadata");
         return 1;
     }
 
-    // For imitation task, load motion initial state
+    // For imitation task, motion will be initialized from robot state on first timer callback
     if (task == "imitation") {
-        if (!loadMotionInitialState(config_dir)) {
-            ROS_FATAL("Failed to load motion data for imitation task");
-            return 1;
-        }
-        if (motion.num_joints != static_cast<int>(config.joint_names.size())) {
-            ROS_WARN("Motion joint count (%d) != policy joint count (%zu)",
-                     motion.num_joints, config.joint_names.size());
-        }
-    }
-
-    // Now that motion is loaded, recompute single_obs_dim and history_length
-    // (needed because command dim depends on motion data for imitation)
-    if (task == "imitation") {
+        // Set number of joints for motion (will be populated from robot state)
+        motion.num_joints = static_cast<int>(config.joint_names.size());
+        
+        // Compute single_obs_dim now that we know joint count
         config.single_obs_dim = 0;
         for (const auto& term_name : config.observation_names) {
             config.single_obs_dim += getObservationTermDim(term_name);
@@ -895,11 +674,8 @@ int main(int argc, char** argv) {
     ROS_INFO("Action dimension: %d (output index: %d)", config.action_dim, config.out_idx_actions);
     ROS_INFO("Joints: %zu obs, %zu action", config.joint_names.size(), config.action_joint_names.size());
     if (task == "imitation") {
-        ROS_INFO("Motion: autoregressive, max_timestep=%d, command_dim=%d",
-                 motion.max_timestep, motion.commandDim());
-        ROS_INFO("Anchor body: '%s' (model index: %d)",
-                 config.anchor_body_name.c_str(), motion.anchor_body_index);
-        ROS_INFO("Tracked bodies: %zu", config.body_names.size());
+        ROS_INFO("Motion: autoregressive from robot state, command_dim=%d",
+                 motion.commandDim());
     }
     
     std::stringstream obs_ss;
@@ -943,6 +719,9 @@ int main(int argc, char** argv) {
     ros::Timer timer = nh.createTimer(ros::Duration(0.02), timerCallback);
     
     ROS_INFO("Policy deployer started successfully!");
+    if (task == "imitation") {
+        ROS_INFO("Waiting for joint state to initialize motion...");
+    }
     
     ros::spin();
     
