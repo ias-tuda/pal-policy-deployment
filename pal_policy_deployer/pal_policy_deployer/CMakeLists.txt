@@ -25,6 +25,11 @@ catkin_package(
 
 include_directories(${catkin_INCLUDE_DIRS})
 
+catkin_install_python(PROGRAMS
+  scripts/velocity_commands.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
 foreach(dir config launch models)
     install(DIRECTORY ${dir}/
         DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/${dir})
