@@ -3,6 +3,7 @@ project(pal_policy_deployer)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  rospy
   roslib
   std_msgs
   message_generation
