@@ -13,6 +13,7 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <onnxruntime_cxx_api.h>
 #include <boost/filesystem.hpp>
+
 // core libraries
 #include <vector>
 #include <algorithm>
@@ -29,6 +30,13 @@
 #include <time.h>
 
 #include <pal_statistics/pal_statistics_macros.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/synchronizer.h>
+
+
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::JointState,
+    sensor_msgs::Imu> SyncPolicy;
 
 static const std::string POLICY_DEPLOYER_TOPIC = "pal_policy_deployer_statistics";
 
@@ -418,7 +426,14 @@ void updateAllHistory() {
 
 // ---- TIMER CALLBACK ----
 
-void timerCallback(const ros::TimerEvent&) {
+void timerCallback(const ros::TimerEvent&) 
+{
+    //std::lock_guard<std::mutex> lk(observation_mutex);
+    runInference();
+}
+
+void runInference()
+{
     // For imitation task, ensure motion is initialized from robot state
     if (config.task == "imitation" && !motion.loaded) {
         if (!initializeMotionFromRobot()) {
@@ -429,8 +444,6 @@ void timerCallback(const ros::TimerEvent&) {
     std::vector<float> obs_input;
     float time_step_val = 0.0f;
     {
-        std::lock_guard<std::mutex> lk(observation_mutex);
-
         if (config.task == "imitation" && motion.loaded) {
             // Update command obs from current motion state
             if (obs_terms.find("command") != obs_terms.end()) {
@@ -480,8 +493,6 @@ void timerCallback(const ros::TimerEvent&) {
     }
     
     {
-        std::lock_guard<std::mutex> lk(observation_mutex);
-
         // Update 'actions' obs term (raw network output, before scaling)
         if (obs_terms.find("actions") != obs_terms.end()) {
             auto& actions_term = obs_terms["actions"];
@@ -522,9 +533,10 @@ void timerCallback(const ros::TimerEvent&) {
 
 // ---- SENSOR CALLBACKS ----
 
-void jsCB(const sensor_msgs::JointState::ConstPtr& msg) {
-    std::lock_guard<std::mutex> lk(observation_mutex);
-    
+void jsCB(const sensor_msgs::JointState::ConstPtr& msg) 
+{  
+    //std::lock_guard<std::mutex> lk(observation_mutex);
+
     // Store latest for imitation initialization
     if (!joint_state_received) {
         latest_joint_state = *msg;
@@ -558,9 +570,10 @@ void jsCB(const sensor_msgs::JointState::ConstPtr& msg) {
     }
 }
 
-void imuCB(const sensor_msgs::Imu::ConstPtr& msg) {
-    std::lock_guard<std::mutex> lk(observation_mutex);
-    
+void imuCB(const sensor_msgs::Imu::ConstPtr& msg) 
+{    
+    //std::lock_guard<std::mutex> lk(observation_mutex);
+
     imu_orientation = Eigen::Quaterniond(
         msg->orientation.w,
         msg->orientation.x,
@@ -587,7 +600,7 @@ void imuCB(const sensor_msgs::Imu::ConstPtr& msg) {
 
     if (obs_terms.find("imu_projected_gravity") != obs_terms.end()) {
         auto& term = obs_terms["imu_projected_gravity"];
-	term->last_msg_time = msg->header.stamp;
+        term->last_msg_time = msg->header.stamp;
         Eigen::Vector3d gravity_world(0.0, 0.0, -1.0);
         Eigen::Vector3d gravity_body = imu_orientation.conjugate() * gravity_world;
         term->current[0] = gravity_body.x();
@@ -600,10 +613,11 @@ void imuCB(const sensor_msgs::Imu::ConstPtr& msg) {
     }
 }
 
-void velCmdCB(const geometry_msgs::Twist::ConstPtr& msg) {
-    if (config.task == "imitation") return;
+void velCmdCB(const geometry_msgs::Twist::ConstPtr& msg) 
+{
+    //std::lock_guard<std::mutex> lk(observation_mutex);
 
-    std::lock_guard<std::mutex> lk(observation_mutex);
+    if (config.task == "imitation") return;
     
     if (obs_terms.find("command") != obs_terms.end()) {
         auto& term = obs_terms["command"];
@@ -614,9 +628,10 @@ void velCmdCB(const geometry_msgs::Twist::ConstPtr& msg) {
     }
 }
 
-void odomCB(const nav_msgs::Odometry::ConstPtr& msg) {
-    std::lock_guard<std::mutex> lk(observation_mutex);
-    
+void odomCB(const nav_msgs::Odometry::ConstPtr& msg) 
+{
+    //std::lock_guard<std::mutex> lk(observation_mutex);
+
     if (obs_terms.find("base_lin_vel") != obs_terms.end()) {
         auto& term = obs_terms["base_lin_vel"];
         term->last_msg_time = msg->header.stamp;
@@ -624,6 +639,16 @@ void odomCB(const nav_msgs::Odometry::ConstPtr& msg) {
         term->current[1] = msg->twist.twist.linear.y;
         term->current[2] = msg->twist.twist.linear.z;
     }
+}
+
+void syncedCB(const sensor_msgs::JointState::ConstPtr& js,
+              const sensor_msgs::Imu::ConstPtr& imu) 
+{    
+    //std::lock_guard<std::mutex> lk(observation_mutex);
+
+    jsCB(js);
+    imuCB(imu);
+    runInference();
 }
 
 // ---- MAIN ----
@@ -725,20 +750,27 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < sess->GetOutputCount(); ++i)
         out_names.push_back(sess->GetOutputNameAllocated(i, alloc).release());
     
-    // Subscribers
-    ros::Subscriber s1 = nh.subscribe("/joint_states", 1, jsCB);
-    ros::Subscriber s2 = nh.subscribe("/base_imu", 1, imuCB);
+    // Unsynced subscribers
     ros::Subscriber s3 = nh.subscribe("/cmd_vel", 1, velCmdCB);
-    
     ros::Subscriber s4;
     if (obs_terms.find("base_lin_vel") != obs_terms.end()) {
         s4 = nh.subscribe("/odom", 1, odomCB);
         ROS_INFO("Subscribed to /odom for base_lin_vel");
     }
-    
+
+    // Synced subscribers
+    message_filters::Subscriber<sensor_msgs::JointState> js_sub(nh, "/joint_states", 1);
+    message_filters::Subscriber<sensor_msgs::Imu>        imu_sub(nh, "/base_imu", 1);
+
+    message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(1), js_sub, imu_sub);
+    // For the policy, messages with as max this interval are the effectively the same
+    sync.setMaxIntervalDuration(ros::Duration(0.01));
+    sync.registerCallback(&syncedCB);
+
     pub_sub_cmd = nh.advertise<sensor_msgs::JointState>("/subscriber_controller/desired_state", 1);
-    
-    ros::Timer timer = nh.createTimer(ros::Duration(0.02), timerCallback);
+
+    // The inference is now handled at the same time as the observations
+    //ros::Timer timer = nh.createTimer(ros::Duration(0.02), timerCallback);
     
     ROS_INFO("Policy deployer started successfully!");
     if (task == "imitation") {
