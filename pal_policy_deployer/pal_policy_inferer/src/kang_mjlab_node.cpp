@@ -395,10 +395,10 @@ bool loadPolicyConfig(const std::string& model_path) {
 std::vector<float> buildObservationVector() {
     std::vector<float> obs;
     obs.reserve(config.obs_dim);
-    
+    const auto obs_time = ros::Time::now();
     for (const auto& term_name : obs_term_order) {
         auto& term = obs_terms[term_name];
-        const auto elapsed_duration = ros::Time::now() - term->last_msg_time;
+        const auto elapsed_duration = obs_time - term->last_msg_time;
         term->elapsed_time = elapsed_duration.toSec();
 
         for (int t = 0; t < config.history_length; ++t) {
