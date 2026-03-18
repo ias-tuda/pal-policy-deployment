@@ -3,6 +3,7 @@ project(pal_policy_deployer)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  rospy
   roslib
   std_msgs
   message_generation
@@ -24,6 +25,11 @@ catkin_package(
 )
 
 include_directories(${catkin_INCLUDE_DIRS})
+
+catkin_install_python(PROGRAMS
+  scripts/velocity_command.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 foreach(dir config launch models)
     install(DIRECTORY ${dir}/

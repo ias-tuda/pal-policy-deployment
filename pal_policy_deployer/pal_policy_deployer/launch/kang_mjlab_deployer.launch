@@ -11,7 +11,7 @@
     <param name="model" value="$(arg model)" />
     <param name="task" value="$(arg task)" />
   </node>
-  
+  <!-- rosrun pal_policy_deployer pal_policy_inferer_mjlab_node task:=imitation model:=v9  -->
   <!-- <node 
     pkg="pal_policy_preprocessor" 
     type="joy_twist_accumulator" 
