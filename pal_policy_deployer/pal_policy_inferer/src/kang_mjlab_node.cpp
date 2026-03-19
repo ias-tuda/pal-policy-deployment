@@ -26,6 +26,11 @@
 #include <cmath>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <time.h>
+
+#include <pal_statistics/pal_statistics_macros.h>
+
+static const std::string POLICY_DEPLOYER_TOPIC = "pal_policy_deployer_statistics";
 
 namespace fs = boost::filesystem;
 
@@ -36,8 +41,13 @@ struct ObservationTerm {
     int dim;
     std::vector<double> current;
     std::deque<std::vector<double>> history;
+    ros::Time last_msg_time;
+    double elapsed_time;  // Since sensor update
     
-    ObservationTerm(const std::string& n, int d) : name(n), dim(d), current(d, 0.0) {}
+    ObservationTerm(const std::string& n, int d) : name(n), dim(d), current(d, 0.0), last_msg_time(0), elapsed_time(0.0) {
+        const std::string full_name = "elapsed_time." + name;
+        REGISTER_VARIABLE(POLICY_DEPLOYER_TOPIC, full_name, &elapsed_time, nullptr);
+    }
     
     void initHistory(int history_length) {
         history.clear();
@@ -385,9 +395,12 @@ bool loadPolicyConfig(const std::string& model_path) {
 std::vector<float> buildObservationVector() {
     std::vector<float> obs;
     obs.reserve(config.obs_dim);
-    
+    const auto obs_time = ros::Time::now();
     for (const auto& term_name : obs_term_order) {
         auto& term = obs_terms[term_name];
+        const auto elapsed_duration = obs_time - term->last_msg_time;
+        term->elapsed_time = elapsed_duration.toSec();
+
         for (int t = 0; t < config.history_length; ++t) {
             for (int i = 0; i < term->dim; ++i) {
                 obs.push_back(static_cast<float>(term->history[t][i]));
@@ -435,6 +448,7 @@ void timerCallback(const ros::TimerEvent&) {
         updateAllHistory();
         obs_input = buildObservationVector();
     }
+    PUBLISH_STATISTICS(POLICY_DEPLOYER_TOPIC);
 
     // Build ONNX inputs
     std::vector<Ort::Value> input_tensors;
@@ -471,6 +485,7 @@ void timerCallback(const ros::TimerEvent&) {
         // Update 'actions' obs term (raw network output, before scaling)
         if (obs_terms.find("actions") != obs_terms.end()) {
             auto& actions_term = obs_terms["actions"];
+            actions_term->last_msg_time = ros::Time::now();
             for (int i = 0; i < config.action_dim; ++i) {
                 actions_term->current[i] = actions_data[i];
             }
@@ -518,6 +533,7 @@ void jsCB(const sensor_msgs::JointState::ConstPtr& msg) {
     
     if (obs_terms.find("joint_pos") != obs_terms.end()) {
         auto& term = obs_terms["joint_pos"];
+        term->last_msg_time = msg->header.stamp;
         for (size_t k = 0; k < config.joint_names.size(); ++k) {
             for (size_t i = 0; i < msg->name.size(); ++i) {
                 if (msg->name[i] == config.joint_names[k]) {
@@ -530,6 +546,7 @@ void jsCB(const sensor_msgs::JointState::ConstPtr& msg) {
     
     if (obs_terms.find("joint_vel") != obs_terms.end()) {
         auto& term = obs_terms["joint_vel"];
+        term->last_msg_time = msg->header.stamp;
         for (size_t k = 0; k < config.joint_names.size(); ++k) {
             for (size_t i = 0; i < msg->name.size(); ++i) {
                 if (msg->name[i] == config.joint_names[k]) {
@@ -554,6 +571,7 @@ void imuCB(const sensor_msgs::Imu::ConstPtr& msg) {
     
     if (obs_terms.find("base_ang_vel") != obs_terms.end()) {
         auto& term = obs_terms["base_ang_vel"];
+        term->last_msg_time = msg->header.stamp;
         term->current[0] = msg->angular_velocity.x;
         term->current[1] = msg->angular_velocity.y;
         term->current[2] = msg->angular_velocity.z;
@@ -561,6 +579,7 @@ void imuCB(const sensor_msgs::Imu::ConstPtr& msg) {
     
     if (obs_terms.find("base_lin_acc") != obs_terms.end()) {
         auto& term = obs_terms["base_lin_acc"];
+        term->last_msg_time = msg->header.stamp;
         term->current[0] = msg->linear_acceleration.x;
         term->current[1] = msg->linear_acceleration.y;
         term->current[2] = msg->linear_acceleration.z;
@@ -568,6 +587,7 @@ void imuCB(const sensor_msgs::Imu::ConstPtr& msg) {
 
     if (obs_terms.find("imu_projected_gravity") != obs_terms.end()) {
         auto& term = obs_terms["imu_projected_gravity"];
+	term->last_msg_time = msg->header.stamp;
         Eigen::Vector3d gravity_world(0.0, 0.0, -1.0);
         Eigen::Vector3d gravity_body = imu_orientation.conjugate() * gravity_world;
         term->current[0] = gravity_body.x();
@@ -587,6 +607,7 @@ void velCmdCB(const geometry_msgs::Twist::ConstPtr& msg) {
     
     if (obs_terms.find("command") != obs_terms.end()) {
         auto& term = obs_terms["command"];
+        term->last_msg_time = ros::Time::now(); // Not really important to know the exact time it was generated
         term->current[0] = msg->linear.x;
         term->current[1] = msg->linear.y;
         term->current[2] = msg->angular.z;
@@ -598,6 +619,7 @@ void odomCB(const nav_msgs::Odometry::ConstPtr& msg) {
     
     if (obs_terms.find("base_lin_vel") != obs_terms.end()) {
         auto& term = obs_terms["base_lin_vel"];
+        term->last_msg_time = msg->header.stamp;
         term->current[0] = msg->twist.twist.linear.x;
         term->current[1] = msg->twist.twist.linear.y;
         term->current[2] = msg->twist.twist.linear.z;

@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_filters
   visualization_msgs
   interactive_markers
+  pal_statistics
 )
 
 find_package(ZLIB REQUIRED)

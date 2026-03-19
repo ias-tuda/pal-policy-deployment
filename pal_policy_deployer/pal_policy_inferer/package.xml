@@ -25,6 +25,7 @@
   <depend>visualization_msgs</depend>
   <depend>interactive_markers</depend>
   <depend>eigen</depend>
+  <depend>pal_statistics</depend>
   <export>
 
   </export>
