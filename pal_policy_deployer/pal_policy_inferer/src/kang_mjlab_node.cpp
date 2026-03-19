@@ -426,12 +426,6 @@ void updateAllHistory() {
 
 // ---- TIMER CALLBACK ----
 
-void timerCallback(const ros::TimerEvent&) 
-{
-    //std::lock_guard<std::mutex> lk(observation_mutex);
-    runInference();
-}
-
 void runInference()
 {
     // For imitation task, ensure motion is initialized from robot state
@@ -531,6 +525,11 @@ void runInference()
     pub_sub_cmd.publish(cmd_msg);
 }
 
+void timerCallback(const ros::TimerEvent&)
+{
+    //std::lock_guard<std::mutex> lk(observation_mutex);
+    runInference();
+}
 // ---- SENSOR CALLBACKS ----
 
 void jsCB(const sensor_msgs::JointState::ConstPtr& msg) 
