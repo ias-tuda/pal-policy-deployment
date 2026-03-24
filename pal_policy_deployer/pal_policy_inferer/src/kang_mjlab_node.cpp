@@ -13,6 +13,8 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <onnxruntime_cxx_api.h>
 #include <boost/filesystem.hpp>
+#include <pal_statistics_msgs/StatisticsNames.h>
+#include <pal_statistics_msgs/StatisticsValues.h>
 
 // core libraries
 #include <vector>
@@ -163,6 +165,9 @@ std::vector<double> action;
 std::vector<double> zero_action;
 
 ros::Publisher pub_sub_cmd;
+
+uint32_t names_version;
+std::vector<std::string> pal_statistics_names;
 
 // ---- UTILITY FUNCTIONS ----
 
@@ -650,6 +655,104 @@ void syncedCB(const sensor_msgs::JointState::ConstPtr& js,
     runInference();
 }
 
+void palStatisticsNamesCb(const pal_statistics_msgs::StatisticsNames::ConstPtr& msg)
+{
+    names_version = msg->names_version;
+    pal_statistics_names = msg->names;
+}
+
+int indexVector(const std::vector<std::string> &container, const std::string &key)
+{
+    const auto it = std::find(container.cbegin(), container.cend(), key);
+    if(it == container.cend())
+    {
+        throw std::runtime_error("Unable to find the key : " + key);
+        return -1;
+    }
+    return std::distance(container.cbegin(), it);
+}
+
+void palStatisticsValuesCb(const pal_statistics_msgs::StatisticsValues::ConstPtr& msg) 
+{
+    if (names_version != msg->names_version)
+    {
+        ROS_WARN("Skipping the reading as the pal statistics names and values version is different");
+        //return;
+    }
+
+    const auto quat_w_index = indexVector(pal_statistics_names, "base_imu_orientation_W");
+    const auto quat_z_index = indexVector(pal_statistics_names, "base_imu_orientation_Z");
+    const auto quat_y_index = indexVector(pal_statistics_names, "base_imu_orientation_Y");
+    const auto quat_x_index = indexVector(pal_statistics_names, "base_imu_orientation_X");
+
+    const auto ang_vel_x_ind = indexVector(pal_statistics_names, "base_imu_angular_vel_X");
+    const auto ang_vel_y_ind = indexVector(pal_statistics_names, "base_imu_angular_vel_Y");
+    const auto ang_vel_z_ind = indexVector(pal_statistics_names, "base_imu_angular_vel_Z");
+
+    const auto lin_accel_x_ind = indexVector(pal_statistics_names, "base_imu_linear_acc_X");
+    const auto lin_accel_y_ind = indexVector(pal_statistics_names, "base_imu_angular_vel_Y");
+    const auto lin_accel_z_ind = indexVector(pal_statistics_names, "base_imu_angular_vel_Z");
+
+
+    imu_orientation = Eigen::Quaterniond(
+        msg->values[quat_w_index],
+        msg->values[quat_x_index],
+        msg->values[quat_y_index],
+        msg->values[quat_z_index]
+    );
+    imu_received = true;
+    
+    if (obs_terms.find("base_ang_vel") != obs_terms.end()) {
+        auto& term = obs_terms["base_ang_vel"];
+        term->last_msg_time = msg->header.stamp;
+        term->current[0] = msg->values[ang_vel_x_ind];
+        term->current[1] = msg->values[ang_vel_y_ind];
+        term->current[2] = msg->values[ang_vel_z_ind];
+    }
+    
+    if (obs_terms.find("base_lin_acc") != obs_terms.end()) {
+        auto& term = obs_terms["base_lin_acc"];
+        term->last_msg_time = msg->header.stamp;
+        term->current[0] = msg->values[lin_accel_x_ind];
+        term->current[1] = msg->values[lin_accel_y_ind];
+        term->current[2] = msg->values[lin_accel_z_ind];
+    }
+
+    if (obs_terms.find("imu_projected_gravity") != obs_terms.end()) {
+        auto& term = obs_terms["imu_projected_gravity"];
+        term->last_msg_time = msg->header.stamp;
+        Eigen::Vector3d gravity_world(0.0, 0.0, -1.0);
+        Eigen::Vector3d gravity_body = imu_orientation.conjugate() * gravity_world;
+        term->current[0] = gravity_body.x();
+        term->current[1] = gravity_body.y();
+        term->current[2] = gravity_body.z();
+    }
+    
+    if (obs_terms.find("base_lin_vel") != obs_terms.end()) {
+        ROS_WARN_ONCE("base_lin_vel term present but not populated from IMU - need odometry source");
+    }
+
+
+    // Store latest data of the joint info
+    if (obs_terms.find("joint_pos") != obs_terms.end() && obs_terms.find("joint_vel") != obs_terms.end()) {
+        ROS_INFO("I'm IN");
+        auto& pos_term = obs_terms["joint_pos"];
+        pos_term->last_msg_time = msg->header.stamp;
+        auto& vel_term = obs_terms["joint_vel"];
+        vel_term->last_msg_time = msg->header.stamp;
+        for (size_t k = 0; k < config.joint_names.size(); ++k) {
+            const std::string pos_str = config.joint_names[k] + "_position";
+            const std::string vel_str = config.joint_names[k] + "_velocity";
+            const auto jnt_pos_index = indexVector(pal_statistics_names, pos_str);
+            const auto jnt_vel_index = indexVector(pal_statistics_names, vel_str);
+            pos_term->current[k] = msg->values[jnt_pos_index] - config.default_joint_pos[k];
+            vel_term->current[k] = msg->values[jnt_vel_index];
+        }
+    }
+    runInference();
+}
+
+
 // ---- MAIN ----
 
 int main(int argc, char** argv) {
@@ -750,6 +853,8 @@ int main(int argc, char** argv) {
         out_names.push_back(sess->GetOutputNameAllocated(i, alloc).release());
     
     // Unsynced subscribers
+    ros::Subscriber s1 = nh.subscribe("/introspection_data/names", 1, palStatisticsNamesCb);
+    ros::Subscriber s2 = nh.subscribe("/introspection_data/values", 1, palStatisticsValuesCb);
     ros::Subscriber s3 = nh.subscribe("/cmd_vel", 1, velCmdCB);
     ros::Subscriber s4;
     if (obs_terms.find("base_lin_vel") != obs_terms.end()) {
@@ -757,14 +862,14 @@ int main(int argc, char** argv) {
         ROS_INFO("Subscribed to /odom for base_lin_vel");
     }
 
-    // Synced subscribers
-    message_filters::Subscriber<sensor_msgs::JointState> js_sub(nh, "/joint_states", 1);
-    message_filters::Subscriber<sensor_msgs::Imu>        imu_sub(nh, "/base_imu", 1);
+    /// Synced subscribers
+    // message_filters::Subscriber<sensor_msgs::JointState> js_sub(nh, "/joint_states", 1);
+    // message_filters::Subscriber<sensor_msgs::Imu>        imu_sub(nh, "/base_imu", 1);
 
-    message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(1), js_sub, imu_sub);
-    // For the policy, messages with as max this interval are the effectively the same
-    sync.setMaxIntervalDuration(ros::Duration(0.01));
-    sync.registerCallback(&syncedCB);
+    // message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(1), js_sub, imu_sub);
+    /// For the policy, messages with as max this interval are the effectively the same
+    // sync.setMaxIntervalDuration(ros::Duration(0.01));
+    // sync.registerCallback(&syncedCB);
 
     pub_sub_cmd = nh.advertise<sensor_msgs::JointState>("/subscriber_controller/desired_state", 1);
 
@@ -776,7 +881,12 @@ int main(int argc, char** argv) {
         ROS_INFO("Waiting for joint state to initialize motion...");
     }
     
-    ros::spin();
+    ros::Rate rate(50);
+    while(ros::ok())
+    {
+        ros::spinOnce();
+        rate.sleep();
+    }
     
     return 0;
 }
