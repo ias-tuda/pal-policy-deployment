@@ -674,6 +674,11 @@ int indexVector(const std::vector<std::string> &container, const std::string &ke
 
 void palStatisticsValuesCb(const pal_statistics_msgs::StatisticsValues::ConstPtr& msg) 
 {
+    if(pal_statistics_names.empty())
+    {
+        ROS_WARN("Skipping the loop as the names is not received yet!");
+        return;
+    }
     if (names_version != msg->names_version)
     {
         ROS_WARN("Skipping the reading as the pal statistics names and values version is different");
@@ -735,7 +740,6 @@ void palStatisticsValuesCb(const pal_statistics_msgs::StatisticsValues::ConstPtr
 
     // Store latest data of the joint info
     if (obs_terms.find("joint_pos") != obs_terms.end() && obs_terms.find("joint_vel") != obs_terms.end()) {
-        ROS_INFO("I'm IN");
         auto& pos_term = obs_terms["joint_pos"];
         pos_term->last_msg_time = msg->header.stamp;
         auto& vel_term = obs_terms["joint_vel"];
