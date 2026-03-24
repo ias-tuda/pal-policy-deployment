@@ -695,8 +695,8 @@ void palStatisticsValuesCb(const pal_statistics_msgs::StatisticsValues::ConstPtr
     const auto ang_vel_z_ind = indexVector(pal_statistics_names, "base_imu_angular_vel_Z");
 
     const auto lin_accel_x_ind = indexVector(pal_statistics_names, "base_imu_linear_acc_X");
-    const auto lin_accel_y_ind = indexVector(pal_statistics_names, "base_imu_angular_vel_Y");
-    const auto lin_accel_z_ind = indexVector(pal_statistics_names, "base_imu_angular_vel_Z");
+    const auto lin_accel_y_ind = indexVector(pal_statistics_names, "base_imu_linear_acc_Y");
+    const auto lin_accel_z_ind = indexVector(pal_statistics_names, "base_imu_linear_acc_Z");
 
 
     imu_orientation = Eigen::Quaterniond(
