@@ -682,7 +682,7 @@ void palStatisticsValuesCb(const pal_statistics_msgs::StatisticsValues::ConstPtr
     if (names_version != msg->names_version)
     {
         ROS_WARN("Skipping the reading as the pal statistics names and values version is different");
-        //return;
+        return;
     }
 
     const auto quat_w_index = indexVector(pal_statistics_names, "base_imu_orientation_W");
