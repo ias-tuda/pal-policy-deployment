@@ -59,3 +59,12 @@ install(DIRECTORY config/
 
 install(FILES controller_plugins.xml
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+
+install(PROGRAMS
+    scripts/hold_position.py
+    scripts/sim_policy.py
+    scripts/publish_current_as_desired.py
+    scripts/publish_current_arms_as_desired.py
+    scripts/publish_arm_target_as_desired.py
+    scripts/publish_current_legs_as_desired.py
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

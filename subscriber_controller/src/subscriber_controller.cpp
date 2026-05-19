@@ -9,6 +9,9 @@
 
 #include <subscriber_controller/subscriber_controller.h>
 
+#include <algorithm>
+#include <cmath>
+
 namespace subscriber_controller
 {
 bool SubscriberController::loadEtras(ros::NodeHandle &control_nh)
@@ -53,6 +56,12 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh)
     desired_torque_.push_back(initial_torque_[i]);
   }
 
+  ROS_WARN_STREAM("subscriber_controller initial_position (held until first desired_state):");
+  for (size_t i = 0; i < actual_js_state_.name.size(); i++)
+    ROS_WARN_STREAM("  [" << i << "] " << actual_js_state_.name[i]
+                    << "  q0=" << initial_position_[i]
+                    << "  tau0=" << initial_torque_[i]);
+
   // Create TimeProfiler and register a new timer called subcriber. One
   // TimeProfiler could have several timers.
   tp_.reset(new pal_robot_tools::TimeProfiler);
@@ -66,6 +75,19 @@ bool SubscriberController::loadEtras(ros::NodeHandle &control_nh)
 
   // Mutex time
   ms_mutex_ = getControllerDt().toSec() * 1000;
+
+  control_nh.param("debug_desired_state", debug_desired_state_, false);
+  control_nh.param<std::string>("debug_joint_name", debug_joint_name_, "");
+  control_nh.param<std::string>("debug_joint_prefix", debug_joint_prefix_, "");
+  control_nh.param("debug_log_period", debug_log_period_, 1.0);
+  if (debug_desired_state_)
+  {
+    ROS_WARN_STREAM("subscriber_controller desired_state debug enabled"
+                    << " joint='" << (debug_joint_name_.empty() ? "<first received>" : debug_joint_name_)
+                    << "' prefix='" << debug_joint_prefix_
+                    << "' period=" << debug_log_period_ << "s"
+                    << " controlled_joints=" << actual_js_state_.name.size());
+  }
 
   std::string gains_ns = "gains";
   XmlRpc::XmlRpcValue gains_param;
@@ -135,18 +157,21 @@ void SubscriberController::updateExtras(const ros::Time &time, const ros::Durati
   actual_base_state_.pose.pose.orientation.z = base_orientation_.z();
   actual_base_state_.pose.pose.orientation.w = base_orientation_.w();
 
-  // Publish values using the RT publisher
-  if (joint_states_pub_->trylock())
+  // Publish at 100 Hz (every 20 cycles at 2000 Hz)
+  if (++publish_counter_ % 10 == 0)
   {
-    actual_js_state_.header.stamp = time;
-    joint_states_pub_->msg_ = actual_js_state_;
-    joint_states_pub_->unlockAndPublish();
-  }
-  if (base_state_pub_->trylock())
-  {
-    actual_base_state_.header.stamp = time;
-    base_state_pub_->msg_ = actual_base_state_;
-    base_state_pub_->unlockAndPublish();
+    if (joint_states_pub_->trylock())
+    {
+      actual_js_state_.header.stamp = time;
+      joint_states_pub_->msg_ = actual_js_state_;
+      joint_states_pub_->unlockAndPublish();
+    }
+    if (base_state_pub_->trylock())
+    {
+      actual_base_state_.header.stamp = time;
+      base_state_pub_->msg_ = actual_base_state_;
+      base_state_pub_->unlockAndPublish();
+    }
   }
 
   // Try to lock the desired state using a mutex.
@@ -154,10 +179,121 @@ void SubscriberController::updateExtras(const ros::Time &time, const ros::Durati
   // If locked and desired state received
   if (lock.owns_lock() && (!desired_state_.name.empty()))
   {
+    if (!first_desired_state_applied_)
+    {
+      first_desired_state_applied_ = true;
+      ROS_WARN_STREAM("subscriber_controller ACTIVE: first desired_state applied at ros_time="
+                      << time.toSec()
+                      << " msg_count=" << desired_messages_received_
+                      << " joints=" << desired_state_.name.size());
+      ROS_WARN_STREAM("subscriber_controller FIRST CMD vs ACTUAL (jump at policy start):");
+      for (size_t i = 0; i < desired_state_.name.size(); i++)
+      {
+        auto actual_it = std::find(actual_js_state_.name.begin(),
+                                   actual_js_state_.name.end(),
+                                   desired_state_.name[i]);
+        double q_actual = (actual_it != actual_js_state_.name.end())
+            ? actual_js_state_.position[std::distance(actual_js_state_.name.begin(), actual_it)]
+            : 0.0;
+        double q_des = (i < desired_state_.position.size()) ? desired_state_.position[i] : 0.0;
+        double jump = q_des - q_actual;
+        ROS_WARN_STREAM("  " << desired_state_.name[i]
+                        << "  q_actual=" << q_actual
+                        << "  q_des=" << q_des
+                        << "  jump=" << jump
+                        << (std::fabs(jump) > 0.05 ? "  *** LARGE ***" : ""));
+      }
+    }
+
     for (size_t i = 0; i < desired_state_.name.size(); i++)
     {
       setDesiredJointState(desired_state_.name[i], desired_state_.position[i],
                            desired_state_.velocity[i], 0., desired_state_.effort[i]);
+    }
+
+    if (debug_desired_state_ &&
+        (last_debug_log_time_.isZero() ||
+         (time - last_debug_log_time_).toSec() >= debug_log_period_))
+    {
+      auto log_joint = [&](const std::string& joint_name) {
+        auto desired_it = std::find(desired_state_.name.begin(), desired_state_.name.end(), joint_name);
+        auto actual_it = std::find(actual_js_state_.name.begin(), actual_js_state_.name.end(), joint_name);
+        if (desired_it == desired_state_.name.end())
+        {
+          ROS_WARN_STREAM("subscriber_controller debug: joint '" << joint_name
+                          << "' not present in desired_state. desired names="
+                          << desired_state_.name.size() << " controlled names="
+                          << actual_js_state_.name.size());
+          return;
+        }
+        if (actual_it == actual_js_state_.name.end())
+        {
+          ROS_WARN_STREAM("subscriber_controller debug: joint '" << joint_name
+                          << "' present in desired_state but not controlled by subscriber_controller");
+          return;
+        }
+
+        const size_t desired_idx = std::distance(desired_state_.name.begin(), desired_it);
+        const size_t actual_idx = std::distance(actual_js_state_.name.begin(), actual_it);
+        if (desired_idx < desired_state_.position.size() &&
+            desired_idx < desired_state_.velocity.size() &&
+            desired_idx < desired_state_.effort.size() &&
+            actual_idx < actual_js_state_.position.size() &&
+            actual_idx < actual_js_state_.velocity.size())
+        {
+          const double q_des = desired_state_.position[desired_idx];
+          const double dq_des = desired_state_.velocity[desired_idx];
+          const double tau_ff = desired_state_.effort[desired_idx];
+          const double q_actual = actual_js_state_.position[actual_idx];
+          const double dq_actual = actual_js_state_.velocity[actual_idx];
+          ROS_WARN_STREAM("subscriber_controller debug joint='" << joint_name
+                          << "' msg_count=" << desired_messages_received_
+                          << " q_des=" << q_des
+                          << " q_actual=" << q_actual
+                          << " err=" << (q_des - q_actual)
+                          << " dq_des=" << dq_des
+                          << " dq_actual=" << dq_actual
+                          << " tau_ff=" << tau_ff);
+        }
+        else
+        {
+          ROS_WARN_STREAM("subscriber_controller debug: malformed desired/actual JointState for joint '"
+                          << joint_name << "' desired_idx=" << desired_idx
+                          << " actual_idx=" << actual_idx
+                          << " desired position/velocity/effort sizes="
+                          << desired_state_.position.size() << "/"
+                          << desired_state_.velocity.size() << "/"
+                          << desired_state_.effort.size()
+                          << " actual position/velocity sizes="
+                          << actual_js_state_.position.size() << "/"
+                          << actual_js_state_.velocity.size());
+        }
+      };
+
+      if (!debug_joint_prefix_.empty())
+      {
+        size_t logged = 0;
+        for (const auto& joint_name : desired_state_.name)
+        {
+          if (joint_name.compare(0, debug_joint_prefix_.size(), debug_joint_prefix_) == 0)
+          {
+            log_joint(joint_name);
+            logged++;
+          }
+        }
+        if (logged == 0)
+        {
+          ROS_WARN_STREAM("subscriber_controller debug: no desired_state joints match prefix '"
+                          << debug_joint_prefix_ << "'");
+        }
+      }
+      else
+      {
+        const std::string joint_name =
+            debug_joint_name_.empty() ? desired_state_.name.front() : debug_joint_name_;
+        log_joint(joint_name);
+      }
+      last_debug_log_time_ = time;
     }
     // If desired state haven't been received yet mantain the initial position
     // using impedance
@@ -201,6 +337,18 @@ void SubscriberController::controlCb(const sensor_msgs::JointStateConstPtr &desi
   if (lock.try_lock_for(std::chrono::milliseconds(ms_mutex_)))
   {
     desired_state_ = *desired_state;
+    desired_messages_received_++;
+    if (debug_desired_state_ && desired_messages_received_ <= 5)
+    {
+      ROS_WARN_STREAM("subscriber_controller received desired_state #"
+                      << desired_messages_received_
+                      << " joints=" << desired_state_.name.size()
+                      << " positions=" << desired_state_.position.size()
+                      << " velocities=" << desired_state_.velocity.size()
+                      << " efforts=" << desired_state_.effort.size()
+                      << " first_joint="
+                      << (desired_state_.name.empty() ? "<none>" : desired_state_.name.front()));
+    }
   }
   // Stop subsciber timer
   tp_->stopTime("subscriber");

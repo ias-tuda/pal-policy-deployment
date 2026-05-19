@@ -67,6 +67,14 @@ private:
   pal_robot_tools::TimeProfilerPtr tp_;
 
   int ms_mutex_;
+  int publish_counter_{0};  // throttle publishers to 100 Hz (every 20 cycles at 2000 Hz)
+  bool debug_desired_state_{false};
+  std::string debug_joint_name_;
+  std::string debug_joint_prefix_;
+  double debug_log_period_{1.0};
+  ros::Time last_debug_log_time_;
+  size_t desired_messages_received_{0};
+  bool first_desired_state_applied_{false};
 
   Eigen::Vector3d base_linear_vel_;
   Eigen::Vector3d base_angular_vel_;

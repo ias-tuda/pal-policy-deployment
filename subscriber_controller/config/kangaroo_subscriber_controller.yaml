@@ -6,6 +6,7 @@ subscriber_controller:
   starting_base_position: [0., 0., 0.6]
   estimated_angular_velocity_scaling_gain: 1.0
   estimated_linear_velocity_scaling_gain: 1.0
+  #joint_velocity_scaling_gain: 0
   joint_velocity_scaling_gain: 1.0
   global_torque_gain: 1.0
   spawn_controller_thread: true
@@ -17,38 +18,45 @@ subscriber_controller:
     robot_model_chains: []
 
   contact_estimator: ""
-    
+  debug_desired_state: true
+  debug_joint_name: leg_left_4_joint
+  debug_joint_prefix: leg_left_
+  debug_log_period: 0.5
+
+  # Fallback PID gains (used only when no desired_state received — holds initial position)
+  # Values from kangaroo_controller_configuration/config/pids.yaml
+  # knee/femur joints have no_control, so gains stay 0
   gains:
     leg_left_1_joint:
-      p: 0.0
+      p: 5000.0
       i: 0.0
       d: 0.0
-      i_clamp: 0.0
+      i_clamp: 50.0
     leg_left_2_joint:
-      p: 0.0
+      p: 5000.0
       i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      d: 50.0
+      i_clamp: 50.0
     leg_left_3_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 5000.0
+      i: 5.0
+      d: 100.0
+      i_clamp: 50.0
     leg_left_4_joint:
-      p: 0.0
-      i: 0.0
+      p: 1000.0
+      i: 10.0
       d: 0.0
-      i_clamp: 0.0
+      i_clamp: 10.0
     leg_left_5_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     leg_left_length_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 100000.0
+      i: 100.0
+      d: 5.0
+      i_clamp: 50.0
     leg_left_knee_joint:
       p: 0.0
       i: 0.0
@@ -60,35 +68,35 @@ subscriber_controller:
       d: 0.0
       i_clamp: 0.0
     leg_right_1_joint:
-      p: 0.0
+      p: 5000.0
       i: 0.0
       d: 0.0
-      i_clamp: 0.0
+      i_clamp: 50.0
     leg_right_2_joint:
-      p: 0.0
+      p: 5000.0
       i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      d: 50.0
+      i_clamp: 50.0
     leg_right_3_joint:
-      p: 00.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 5000.0
+      i: 5.0
+      d: 100.0
+      i_clamp: 50.0
     leg_right_4_joint:
-      p: 0.0
-      i: 0.0
+      p: 1000.0
+      i: 10.0
       d: 0.0
-      i_clamp: 0.0
+      i_clamp: 10.0
     leg_right_5_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     leg_right_length_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 100000.0
+      i: 100.0
+      d: 5.0
+      i_clamp: 50.0
     leg_right_knee_joint:
       p: 0.0
       i: 0.0
@@ -100,52 +108,92 @@ subscriber_controller:
       d: 0.0
       i_clamp: 0.0
     pelvis_1_joint:
-      p: 0.0
+      p: 5000.0
       i: 0.0
       d: 0.0
-      i_clamp: 0.0
+      i_clamp: 50.0
     pelvis_2_joint:
-      p: 0.0
+      p: 5000.0
       i: 0.0
       d: 0.0
-      i_clamp: 0.0
+      i_clamp: 50.0
     arm_left_1_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     arm_left_2_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     arm_left_3_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     arm_left_4_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
+    arm_left_5_joint:
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
+    arm_left_6_joint:
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
+    arm_left_7_joint:
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
+    gripper_left_finger_joint:
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     arm_right_1_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     arm_right_2_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     arm_right_3_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
     arm_right_4_joint:
-      p: 0.0
-      i: 0.0
-      d: 0.0
-      i_clamp: 0.0
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
+    arm_right_5_joint:
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
+    arm_right_6_joint:
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
+    arm_right_7_joint:
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
+    gripper_right_finger_joint:
+      p: 500.0
+      i: 2.0
+      d: 0.5
+      i_clamp: 10.0
