@@ -7,6 +7,7 @@
 #include <sensor_msgs/Imu.h>
 #include <geometry_msgs/Point.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Vector3Stamped.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <nav_msgs/Odometry.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -98,6 +99,8 @@ std::vector<double> action;
 std::vector<double> zero_action;
 
 ros::Publisher pub_sub_cmd;
+ros::Publisher pub_dbg_proj_grav_policy;
+ros::Publisher pub_dbg_proj_grav_corrected;
 
 // ---- UTILITY FUNCTIONS ----
 
@@ -404,19 +407,42 @@ void imuCB(const sensor_msgs::Imu::ConstPtr& msg) {
         // or try UnitY() if X doesn't work
     );
 
-    // Then in your callback:
-    if (obs_terms.find("projected_gravity") != obs_terms.end()) {
-        auto& term = obs_terms["projected_gravity"];
-        
-        // Apply IMU mounting correction technically for 53 but didnt work
-        Eigen::Quaterniond corrected_orientation = imu_orientation * imu_correction;
+    std::string grav_key = obs_terms.count("imu_projected_gravity") ?
+                           "imu_projected_gravity" : "projected_gravity";
+    if (obs_terms.find(grav_key) != obs_terms.end()) {
+        auto& term = obs_terms[grav_key];
         
         Eigen::Vector3d gravity_world(0.0, 0.0, -1.0);
         Eigen::Vector3d gravity_body = imu_orientation.conjugate() * gravity_world;
+        Eigen::Vector3d gravity_body_corrected = imu_correction * gravity_body;
         
         term->current[0] = gravity_body.x();
         term->current[1] = gravity_body.y();
         term->current[2] = gravity_body.z();
+
+        ROS_INFO_THROTTLE(1.0, "[POLICY INPUT] %s x=%.4f y=%.4f z=%.4f  (norm=%.4f)",
+            grav_key.c_str(), term->current[0], term->current[1], term->current[2],
+            gravity_body.norm());
+        ROS_INFO_THROTTLE(1.0, "[GRAVITY DEBUG] corrected_ref x=%.4f y=%.4f z=%.4f  (norm=%.4f)",
+            gravity_body_corrected.x(), gravity_body_corrected.y(), gravity_body_corrected.z(),
+            gravity_body_corrected.norm());
+
+        {
+            geometry_msgs::Vector3Stamped v;
+            v.header.stamp = msg->header.stamp;
+            v.vector.x = term->current[0];
+            v.vector.y = term->current[1];
+            v.vector.z = term->current[2];
+            pub_dbg_proj_grav_policy.publish(v);
+        }
+        {
+            geometry_msgs::Vector3Stamped v;
+            v.header.stamp = msg->header.stamp;
+            v.vector.x = gravity_body_corrected.x();
+            v.vector.y = gravity_body_corrected.y();
+            v.vector.z = gravity_body_corrected.z();
+            pub_dbg_proj_grav_corrected.publish(v);
+        }
     }
     
     // Update base_lin_vel term if present (would need odometry, placeholder)
@@ -540,6 +566,8 @@ int main(int argc, char** argv) {
     
     // Publisher
     pub_sub_cmd = nh.advertise<sensor_msgs::JointState>("/subscriber_controller/desired_state", 1);
+    pub_dbg_proj_grav_policy = nh.advertise<geometry_msgs::Vector3Stamped>("/policy_input/projected_gravity", 1);
+    pub_dbg_proj_grav_corrected = nh.advertise<geometry_msgs::Vector3Stamped>("/policy_input/projected_gravity_corrected_ref", 1);
     
     // Timer at 50Hz
     ros::Timer timer = nh.createTimer(ros::Duration(0.02), timerCallback);

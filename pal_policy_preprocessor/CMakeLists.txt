@@ -5,6 +5,9 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   roslib
   std_msgs
+  sensor_msgs
+  geometry_msgs
+  nav_msgs
   message_filters
   visualization_msgs
   interactive_markers
@@ -14,7 +17,7 @@ find_package(Eigen3 REQUIRED NO_MODULE)
 
 catkin_package(
   CATKIN_DEPENDS
-    roscpp std_msgs message_filters visualization_msgs interactive_markers
+    roscpp std_msgs sensor_msgs geometry_msgs nav_msgs message_filters visualization_msgs interactive_markers
 )
 
 ########################
@@ -32,10 +35,14 @@ add_executable(joy_twist_accumulator src/joy_twist_accumulator.cpp)
 target_link_libraries(joy_twist_accumulator ${catkin_LIBRARIES})
 add_dependencies(joy_twist_accumulator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
+add_executable(base_imu_fix src/base_imu_fix.cpp)
+target_link_libraries(base_imu_fix ${catkin_LIBRARIES})
+add_dependencies(base_imu_fix ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
 ##############
 
 
 ## Mark executables for installation
-install(TARGETS interactive_marker joy_twist_accumulator
+install(TARGETS interactive_marker joy_twist_accumulator base_imu_fix
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

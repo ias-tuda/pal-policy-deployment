@@ -1,0 +1,78 @@
+<launch>
+  <arg name="model" default="v44" />
+  <arg name="task" default="loco" />
+  <arg name="fake_imu" default="false" doc="Use /base_imu_fake instead of /base_imu" />
+  <arg name="actuator_delay_enabled" default="false" />
+  <arg name="actuator_delay_steps" default="0" doc="Delay in 50Hz policy ticks; 1 step = 20ms" />
+  <arg name="actuator_delay_jitter_steps" default="0" doc="Additional random delay ticks sampled from [0, jitter_steps]" />
+  <arg name="actuator_delay_seconds" default="0.0" doc="Optional delay in seconds; overrides actuator_delay_steps when > 0" />
+  <arg name="actuator_delay_seed" default="0" doc="0 means random seed; non-zero gives repeatable delay jitter" />
+  <arg name="noise_enabled" default="true" />
+  <arg name="input_noise_stddev" default="0.0" />
+  <arg name="output_noise_stddev" default="0.0" />
+  <arg name="noise_seed" default="0" doc="0 means random seed; non-zero gives repeatable noise" />
+  <arg name="joint_pos_noise_enabled" default="false" />
+  <arg name="joint_pos_noise_stddev" default="0.0" />
+  <arg name="joint_vel_noise_enabled" default="false" />
+  <arg name="joint_vel_noise_stddev" default="0.0" />
+  <arg name="base_ang_vel_noise_enabled" default="false" />
+  <arg name="base_ang_vel_noise_stddev" default="0.0" />
+  <arg name="base_lin_acc_noise_enabled" default="false" />
+  <arg name="base_lin_acc_noise_stddev" default="0.0" />
+  <arg name="projected_gravity_noise_enabled" default="false" />
+  <arg name="projected_gravity_noise_stddev" default="0.0" />
+  <arg name="command_noise_enabled" default="false" />
+  <arg name="command_noise_stddev" default="0.0" />
+  <arg name="actions_noise_enabled" default="false" />
+  <arg name="actions_noise_stddev" default="0.0" />
+  <arg name="base_lin_vel_noise_enabled" default="false" />
+  <arg name="base_lin_vel_noise_stddev" default="0.0" />
+
+  <node
+    pkg="pal_policy_inferer"
+    type="pal_policy_inferer_mjlab_noise_node"
+    name="pal_policy_inferer_mjlab_noise_node"
+    output="screen">
+    <param name="model" value="$(arg model)" />
+    <param name="task" value="$(arg task)" />
+    <param name="actuator_delay_enabled" value="$(arg actuator_delay_enabled)" />
+    <param name="actuator_delay_steps" value="$(arg actuator_delay_steps)" />
+    <param name="actuator_delay_jitter_steps" value="$(arg actuator_delay_jitter_steps)" />
+    <param name="actuator_delay_seconds" value="$(arg actuator_delay_seconds)" />
+    <param name="actuator_delay_seed" value="$(arg actuator_delay_seed)" />
+    <param name="noise_enabled" value="$(arg noise_enabled)" />
+    <param name="input_noise_stddev" value="$(arg input_noise_stddev)" />
+    <param name="output_noise_stddev" value="$(arg output_noise_stddev)" />
+    <param name="noise_seed" value="$(arg noise_seed)" />
+    <param name="joint_pos_noise_enabled" value="$(arg joint_pos_noise_enabled)" />
+    <param name="joint_pos_noise_stddev" value="$(arg joint_pos_noise_stddev)" />
+    <param name="joint_vel_noise_enabled" value="$(arg joint_vel_noise_enabled)" />
+    <param name="joint_vel_noise_stddev" value="$(arg joint_vel_noise_stddev)" />
+    <param name="base_ang_vel_noise_enabled" value="$(arg base_ang_vel_noise_enabled)" />
+    <param name="base_ang_vel_noise_stddev" value="$(arg base_ang_vel_noise_stddev)" />
+    <param name="base_lin_acc_noise_enabled" value="$(arg base_lin_acc_noise_enabled)" />
+    <param name="base_lin_acc_noise_stddev" value="$(arg base_lin_acc_noise_stddev)" />
+    <param name="projected_gravity_noise_enabled" value="$(arg projected_gravity_noise_enabled)" />
+    <param name="projected_gravity_noise_stddev" value="$(arg projected_gravity_noise_stddev)" />
+    <param name="command_noise_enabled" value="$(arg command_noise_enabled)" />
+    <param name="command_noise_stddev" value="$(arg command_noise_stddev)" />
+    <param name="actions_noise_enabled" value="$(arg actions_noise_enabled)" />
+    <param name="actions_noise_stddev" value="$(arg actions_noise_stddev)" />
+    <param name="base_lin_vel_noise_enabled" value="$(arg base_lin_vel_noise_enabled)" />
+    <param name="base_lin_vel_noise_stddev" value="$(arg base_lin_vel_noise_stddev)" />
+    <remap if="$(arg fake_imu)" from="/base_imu" to="/base_imu_fake" />
+  </node>
+
+  <node
+    if="$(arg fake_imu)"
+    pkg="pal_policy_preprocessor"
+    type="base_imu_fix"
+    name="base_imu_fix"
+    output="screen">
+    <param name="input_imu_topic" value="/base_imu" />
+    <param name="output_imu_topic" value="/base_imu_fake" />
+    <param name="use_odom_acceleration" value="false" />
+  </node>
+
+  <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch" />
+</launch>

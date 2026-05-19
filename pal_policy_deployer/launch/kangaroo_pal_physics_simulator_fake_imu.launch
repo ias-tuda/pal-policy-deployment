@@ -1,0 +1,31 @@
+<launch>
+  <arg name="with_arms" default="true" />
+  <arg name="arm_type" default="7dof" />
+  <arg name="with_pelvis" default="true" />
+  <arg name="end_effector_type" default="gripper" />
+  <arg name="ft_sensors" default="false" />
+  <arg name="fixed_base" default="false" />
+  <arg name="gui" default="true" />
+  <arg name="world" default="" />
+
+  <include file="$(find kangaroo_pal_physics_simulator)/launch/kangaroo_pal_physics_simulator.launch">
+    <arg name="with_arms" value="$(arg with_arms)" />
+    <arg name="arm_type" value="$(arg arm_type)" />
+    <arg name="with_pelvis" value="$(arg with_pelvis)" />
+    <arg name="end_effector_type" value="$(arg end_effector_type)" />
+    <arg name="ft_sensors" value="$(arg ft_sensors)" />
+    <arg name="fixed_base" value="$(arg fixed_base)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="world" value="$(arg world)" />
+  </include>
+
+  <node
+    pkg="pal_policy_preprocessor"
+    type="base_imu_fix"
+    name="base_imu_fix"
+    output="screen">
+    <param name="input_imu_topic" value="/base_imu" />
+    <param name="output_imu_topic" value="/base_imu_fake" />
+    <param name="use_odom_acceleration" value="false" />
+  </node>
+</launch>

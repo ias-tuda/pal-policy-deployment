@@ -2,7 +2,8 @@
   <!-- Argument for model version -->
   <arg name="model" default="v44" />
   <arg name="task" default="loco" />
-  
+  <arg name="fake_imu" default="false" doc="Use /base_imu_fake instead of /base_imu" />
+
   <node
     pkg="pal_policy_inferer"
     type="pal_policy_inferer_mjlab_node"
@@ -10,6 +11,18 @@
     output="screen">
     <param name="model" value="$(arg model)" />
     <param name="task" value="$(arg task)" />
+    <remap if="$(arg fake_imu)" from="/base_imu" to="/base_imu_fake" />
+  </node>
+
+  <node
+    if="$(arg fake_imu)"
+    pkg="pal_policy_preprocessor"
+    type="base_imu_fix"
+    name="base_imu_fix"
+    output="screen">
+    <param name="input_imu_topic" value="/base_imu" />
+    <param name="output_imu_topic" value="/base_imu_fake" />
+    <param name="use_odom_acceleration" value="false" />
   </node>
   
   <!-- <node 

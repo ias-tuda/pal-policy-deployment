@@ -1,0 +1,28 @@
+<launch>
+  <arg name="model" default="v69" />
+  <arg name="task" default="loco" />
+  <arg name="bag" default="/catkin_ws/src/Rosbags/Kangaroo_v69_inference_2026_04_28.bag" />
+  <arg name="trigger_topic" default="/policy_input/base_lin_acc" />
+  <arg name="replay_rate_scale" default="1.0" />
+  <arg name="loop" default="false" />
+  <arg name="start_subscriber_controller" default="true" />
+  <arg name="replay_actions_from_bag" default="true" />
+
+  <node
+    pkg="pal_policy_inferer"
+    type="pal_policy_inferer_mjlab_bag_replay_node"
+    name="pal_policy_inferer_mjlab_bag_replay_node"
+    output="screen">
+    <param name="model" value="$(arg model)" />
+    <param name="task" value="$(arg task)" />
+    <param name="bag" value="$(arg bag)" />
+    <param name="trigger_topic" value="$(arg trigger_topic)" />
+    <param name="replay_rate_scale" value="$(arg replay_rate_scale)" />
+    <param name="loop" value="$(arg loop)" />
+    <param name="replay_actions_from_bag" value="$(arg replay_actions_from_bag)" />
+  </node>
+
+  <include
+    if="$(arg start_subscriber_controller)"
+    file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch" />
+</launch>
