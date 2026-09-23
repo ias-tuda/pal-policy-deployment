@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="pal_gravity_compensation" type="gravity_compensation_node"
+        name="gravity_compensation" output="screen" required="true">
+    <rosparam command="load" file="$(find pal_gravity_compensation)/config/gravity_compensation.yaml" />
+  </node>
+</launch>

@@ -1,0 +1,23 @@
+<launch>
+  <arg name="robot_description" default="robot_description" />
+  <arg name="publish_commands" default="false" />
+  <arg name="joint_state_topic" default="/simulator/joint_states" />
+  <arg name="action_topic" default="/pal_policy/raw_actions" />
+  <arg name="command_topic" default="/pal_grasp/desired_state_uncompensated" />
+  <arg name="start_gravity_bridge" default="true" />
+  <arg name="start_config_path" default="" />
+  <arg name="policy_node_name" default="" />
+
+  <node pkg="pal_training_ik" type="training_ik_node" name="training_ik" output="screen">
+    <rosparam command="load" file="$(find pal_training_ik)/config/kangaroo_left_grasp.yaml" />
+    <param name="robot_description" value="$(arg robot_description)" />
+    <param name="joint_state_topic" value="$(arg joint_state_topic)" />
+    <param name="action_topic" value="$(arg action_topic)" />
+    <param name="command_topic" value="$(arg command_topic)" />
+    <param name="publish_commands" value="$(arg publish_commands)" />
+    <param if="$(eval arg('start_config_path') != '')" name="start_config_path" value="$(arg start_config_path)" />
+    <param if="$(eval arg('policy_node_name') != '')" name="policy_node_name" value="$(arg policy_node_name)" />
+  </node>
+  <include if="$(arg start_gravity_bridge)"
+           file="$(find pal_gravity_compensation)/launch/gravity_compensation.launch" />
+</launch>

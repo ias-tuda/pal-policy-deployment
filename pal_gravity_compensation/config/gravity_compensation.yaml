@@ -1,0 +1,14 @@
+robot_description: robot_description
+base_link: base_link
+gravity_tip_link: gripper_left_base_link
+# Gravity expressed in base_link. This setup assumes a level base.
+gravity_base: [0.0, 0.0, -9.81]
+input_topic: /pal_grasp/desired_state_uncompensated
+state_topic: /subscriber_controller/actual_js_state
+output_topic: /subscriber_controller/desired_state
+preview_topic: /pal_grasp/desired_state_compensated
+controller_name: subscriber_controller
+rate: 500.0
+state_timeout: 0.25
+arm_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+effort_limits: [50.0, 50.0, 25.0, 25.0, 25.0, 25.0, 25.0]
