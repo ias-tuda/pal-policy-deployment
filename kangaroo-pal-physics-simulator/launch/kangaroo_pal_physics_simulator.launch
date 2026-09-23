@@ -3,8 +3,8 @@
   <!-- ARGUMENTS -->
   
   <!-- no-arm, 4dof, 5dof, 7dof] -->
-  <arg name="arm_type" default="4dof" />
-  <arg name="end_effector_type"   default="fake-forearm"/>
+  <arg name="arm_type" default="7dof" />
+  <arg name="end_effector_type"   default="gripper"/>
 
  <arg name="arm_type_processed" value="$(eval arg('arm_type') 
                 if arg('arm_type')=='4dof' or (arg('arm_type')=='7dof' and arg('end_effector_type')=='no-end-effector')

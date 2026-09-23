@@ -78,3 +78,7 @@ The *PAL Physics simulator* has different internal robot models that are publish
 - `/simulator/joint_states` publishes the internal state of the simulator.
 - *RobotModel* uses the description of the *tf* and the robot state publisher to show the current state of the robot.
 
+
+# Reset Simulation
+
+rosservice call /pal_physics_simulator/reset_world
