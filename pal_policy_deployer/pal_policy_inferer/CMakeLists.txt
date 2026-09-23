@@ -9,13 +9,17 @@ find_package(catkin REQUIRED COMPONENTS
   visualization_msgs
   interactive_markers
   pal_statistics
+  kdl_parser
+  sensor_msgs
+  urdf
 )
 
 find_package(ZLIB REQUIRED)
 
 catkin_package(
   CATKIN_DEPENDS
-    roscpp std_msgs message_filters visualization_msgs interactive_markers
+    roscpp std_msgs sensor_msgs message_filters visualization_msgs interactive_markers
+    kdl_parser urdf
 )
 find_package(Eigen3 REQUIRED NO_MODULE)
 
@@ -45,8 +49,6 @@ target_link_libraries(${PROJECT_NAME}_ilab_node_v21
   onnxruntime
 )
 
-
-install(TARGETS ${PROJECT_NAME}_mjlab_node ${PROJECT_NAME}_ilab_node_v21 
+install(TARGETS ${PROJECT_NAME}_mjlab_node ${PROJECT_NAME}_ilab_node_v21
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
-

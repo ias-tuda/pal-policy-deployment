@@ -26,6 +26,9 @@
   <depend>interactive_markers</depend>
   <depend>eigen</depend>
   <depend>pal_statistics</depend>
+  <depend>sensor_msgs</depend>
+  <depend>urdf</depend>
+  <depend>kdl_parser</depend>
   <export>
 
   </export>

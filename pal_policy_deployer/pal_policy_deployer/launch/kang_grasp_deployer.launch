@@ -1,0 +1,36 @@
+<launch>
+  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_mock.yaml" />
+  <arg name="publish_commands" default="false" />
+  <arg name="joint_state_topic" default="/simulator/joint_states" />
+  <arg name="action_topic" default="/pal_policy/raw_actions" />
+
+  <node pkg="pal_policy_inferer" type="pal_policy_inferer_mjlab_node"
+        name="pal_policy_inferer_mjlab_node" output="screen">
+    <rosparam command="load" file="$(arg profile)" />
+    <param name="task" value="grasp" />
+    <param name="joint_state_topic" value="$(arg joint_state_topic)" />
+    <param name="action_topic" value="$(arg action_topic)" />
+  </node>
+
+  <include file="$(find pal_training_ik)/launch/kangaroo_left_grasp.launch">
+    <arg name="publish_commands" value="$(arg publish_commands)" />
+    <arg name="joint_state_topic" value="$(arg joint_state_topic)" />
+    <arg name="action_topic" value="$(arg action_topic)" />
+  </include>
+
+  <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
+    <arg name="local_joint_control_type" value="no_control" />
+    <arg name="local_joint_control_leg_length" value="no_control" />
+    <arg name="local_joint_control_ankle" value="no_control" />
+    <arg name="local_joint_control_hip" value="no_control" />
+    <arg name="local_joint_control_hip_z" value="no_control" />
+    <arg name="local_joint_control_pelvis" value="no_control" />
+    <arg name="local_joint_control_arms" value="no_control" />
+  </include>
+
+  <include file="$(find kangaroo_controller_configuration)/launch/local_joint_control/arm_left_7dof.launch">
+    <arg name="local_joint_control_type" value="direct_impedance_control" />
+    <arg name="local_joint_control_pkg" value="pal_local_joint_control" />
+    <arg name="ns" value="subscriber_controller" />
+  </include>
+</launch>
