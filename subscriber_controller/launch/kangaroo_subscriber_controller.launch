@@ -18,6 +18,7 @@
   <arg name="safety_override" default=""/>
   <arg name="disable_safety_for_joints" default="['leg_left_4_joint','leg_left_5_joint','leg_right_4_joint','leg_right_5_joint']"/>
   <arg name="config_pkg" default="subscriber_controller"/>
+  <arg name="spawn_controller" default="true"/>
 
   <rosparam command="delete" param="/$(arg controller_name)" />
   
@@ -47,7 +48,7 @@
   </include>
 
   <!-- Spawn controller -->
-  <node name="subscriber_controller_spawner"
+  <node if="$(arg spawn_controller)" name="subscriber_controller_spawner"
         pkg="controller_manager" type="spawner" output="screen"
         args="$(arg controller_name)" />
 
