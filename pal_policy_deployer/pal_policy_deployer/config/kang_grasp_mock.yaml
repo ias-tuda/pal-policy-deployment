@@ -1,4 +1,4 @@
-model_path: /catkin_ws/src/models/2026-09-24_09-50-45_grasp-kangaroo-grippers_s42/2026-09-24_09-50-45_grasp-kangaroo-grippers_s42.onnx
+model_path: /catkin_ws/src/models/2026-09-24_09-50-45_grasp-kangaroo-grippers_s42/model_1600.onnx
 # Model contract from this checkpoint's training configuration. Order matters.
 joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint, gripper_left_finger_joint]
 arm_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]

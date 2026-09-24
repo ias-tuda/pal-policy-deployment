@@ -170,6 +170,7 @@ class TrainingIkNode {
       }
       ROS_INFO("Loaded IK posture from %s", start_config_path.c_str());
     }
+    gripper_target_ = gripper_default_position_;
     std::vector<double> tcp_offset;
     if (!private_nh_.getParam("tcp_offset", tcp_offset) || tcp_offset.size() != 3) {
       throw std::runtime_error("~tcp_offset must contain x, y, z");
