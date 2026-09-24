@@ -20,6 +20,8 @@
   <exec_depend>pal_policy_inferer</exec_depend>
   <exec_depend>pal_policy_postprocessor</exec_depend>
   <exec_depend>pal_policy_preprocessor</exec_depend>
+  <exec_depend>pal_training_ik</exec_depend>
+  <exec_depend>pal_gravity_compensation</exec_depend>
 
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
@@ -31,6 +33,8 @@
   <build_export_depend>std_msgs</build_export_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>rospy</exec_depend>
+  <exec_depend>controller_manager_msgs</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>message_runtime</exec_depend>
   <exec_depend>message_filters</exec_depend>

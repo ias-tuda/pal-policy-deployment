@@ -1,8 +1,9 @@
-model_path: /catkin_ws/src/models/frxp7hyx/model_300.onnx
+model_path: /catkin_ws/src/models/2026-09-24_09-50-45_grasp-kangaroo-grippers_s42/2026-09-24_09-50-45_grasp-kangaroo-grippers_s42.onnx
 # Model contract from this checkpoint's training configuration. Order matters.
 joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint, gripper_left_finger_joint]
 arm_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
-default_joint_pos: [0.102, 1.452, 1.777, 1.670, -0.458, 0.404, 0.009, 0.0]
+# Subset of joint_names observed by joint_vel; omit to use all joint_names.
+joint_vel_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
 observation_terms: [joint_pos_rel, joint_vel, last_action, tcp_pos_b, object_pos_b, object_yaw_b, goal_pos_b, tcp_quat_b]
 action_dim: 7
 robot_description: robot_description
@@ -18,4 +19,4 @@ state_timeout: 0.1
 # Replace the object values with a pose source before physical deployment.
 mock_object_position_b: [0.50, 0.10, -0.115]
 mock_object_yaw_b: 0.0
-goal_position_b: [0.50, 0.10, 0.0]
+goal_position_b: [0.5, 0.12, 0.03]

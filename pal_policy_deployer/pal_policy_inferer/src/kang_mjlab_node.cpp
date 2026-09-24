@@ -13,6 +13,7 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <onnxruntime_cxx_api.h>
 #include <boost/filesystem.hpp>
+#include <boost/property_tree/json_parser.hpp>
 #include <pal_statistics_msgs/StatisticsNames.h>
 #include <pal_statistics_msgs/StatisticsValues.h>
 #include <kdl/chain.hpp>
@@ -28,8 +29,10 @@
 #include <iostream>
 #include <deque>
 #include <sstream>
+#include <stdexcept>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <functional>
 #include <cmath>
 #include <Eigen/Core>
@@ -172,8 +175,11 @@ std::vector<double> zero_action;
 // The grasp observation contract is supplied by the selected policy profile.
 std::vector<std::string> grasp_joint_names;
 std::vector<std::string> grasp_arm_joint_names;
+// Indices into grasp_joint_names observed by joint_vel (defaults to all joint_names).
+std::vector<size_t> grasp_vel_indices;
 std::vector<std::string> grasp_observation_terms;
 std::vector<double> grasp_default_joint_pos;
+std::vector<double> grasp_default_joint_vel;
 KDL::Chain grasp_chain;
 std::unique_ptr<KDL::ChainFkSolverPos_recursive> grasp_fk;
 std::vector<std::string> grasp_chain_joint_names;
@@ -190,13 +196,16 @@ double grasp_state_timeout = 0.1;
 bool grasp_state_received = false;
 ros::Time grasp_state_time;
 ros::Publisher grasp_action_pub;
+ros::Publisher grasp_observation_pub;
+bool grasp_dry_run = false;
 ros::Subscriber grasp_joint_state_sub;
 std::mutex grasp_mutex;
 std::string grasp_action_topic = "/pal_policy/raw_actions";
 
 int graspTermDim(const std::string& term)
 {
-    if (term == "joint_pos_rel" || term == "joint_vel") return grasp_joint_names.size();
+    if (term == "joint_pos_rel") return grasp_joint_names.size();
+    if (term == "joint_vel") return grasp_vel_indices.size();
     if (term == "last_action") return grasp_last_action.size();
     if (term == "tcp_pos_b" || term == "object_pos_b" || term == "goal_pos_b") return 3;
     if (term == "object_yaw_b") return 2;
@@ -846,7 +855,8 @@ bool buildGraspObservation(std::vector<float>& obs)
             for (size_t j = 0; j < grasp_position.size(); ++j)
                 obs.push_back(static_cast<float>(grasp_position[j] - grasp_default_joint_pos[j]));
         } else if (term == "joint_vel") {
-            for (double value : grasp_velocity) obs.push_back(static_cast<float>(value));
+            for (const size_t j : grasp_vel_indices)
+                obs.push_back(static_cast<float>(grasp_velocity[j] - grasp_default_joint_vel[j]));
         } else if (term == "last_action") {
             obs.insert(obs.end(), grasp_last_action.begin(), grasp_last_action.end());
         } else if (term == "tcp_pos_b") {
@@ -880,6 +890,11 @@ void graspInferenceTimer(const ros::TimerEvent&)
 
     std::vector<float> obs;
     if (!buildGraspObservation(obs)) return;
+    std_msgs::Float64MultiArray obs_msg;
+    obs_msg.data.assign(obs.begin(), obs.end());
+    grasp_observation_pub.publish(obs_msg);
+    // Dry run keeps last_action at zero so the start observation can be checked.
+    if (grasp_dry_run) return;
     const int64_t shape[] = {1, config.obs_dim};
     Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
         ort_mem, obs.data(), obs.size(), shape, 2);
@@ -902,16 +917,81 @@ void graspInferenceTimer(const ros::TimerEvent&)
     for (size_t j = 0; j < grasp_last_action.size(); ++j) grasp_last_action[j] = output[j];
 }
 
-bool loadGraspPolicyConfig(ros::NodeHandle& nh)
+bool loadGraspStartConfig(ros::NodeHandle& nh, const std::string& model_path)
+{
+    std::string path;
+    nh.param<std::string>("start_config_path", path, "");
+    if (path.empty()) path = (fs::path(model_path).parent_path() / "deployment_start_config.json").string();
+    if (!fs::exists(path)) {
+        if (nh.hasParam("start_config_path")) {
+            ROS_ERROR("Start config does not exist: %s", path.c_str());
+            return false;
+        }
+        if (!nh.getParam("default_joint_pos", grasp_default_joint_pos) ||
+            grasp_default_joint_pos.size() != grasp_joint_names.size()) {
+            ROS_ERROR("Grasp profile needs default_joint_pos when no deployment_start_config.json is present");
+            return false;
+        }
+        grasp_default_joint_vel.assign(grasp_joint_names.size(), 0.0);
+        ROS_WARN("No deployment_start_config.json beside ONNX; using profile default_joint_pos");
+    } else {
+        try {
+            boost::property_tree::ptree root;
+            boost::property_tree::read_json(path, root);
+            if (root.get<int>("schema_version") != 1)
+                throw std::runtime_error("unsupported schema_version");
+            std::unordered_set<std::string> names;
+            for (const auto& item : root.get_child("joint_names")) {
+                if (!names.insert(item.second.get_value<std::string>()).second)
+                    throw std::runtime_error("duplicate joint name");
+            }
+            const auto& positions = root.get_child("joint_positions");
+            const auto& velocities = root.get_child("joint_velocities");
+            grasp_default_joint_pos.clear();
+            grasp_default_joint_vel.clear();
+            for (const auto& name : grasp_joint_names) {
+                if (!names.count(name)) throw std::runtime_error("missing joint in joint_names: " + name);
+                const double pos = positions.get<double>(name);
+                const double vel = velocities.get<double>(name);
+                if (!std::isfinite(pos) || !std::isfinite(vel))
+                    throw std::runtime_error("non-finite start state for " + name);
+                grasp_default_joint_pos.push_back(pos);
+                grasp_default_joint_vel.push_back(vel);
+            }
+        } catch (const std::exception& e) {
+            ROS_ERROR("Invalid start config %s: %s", path.c_str(), e.what());
+            return false;
+        }
+        ROS_INFO("Loaded grasp observation start state from %s", path.c_str());
+    }
+    if (!std::all_of(grasp_default_joint_pos.begin(), grasp_default_joint_pos.end(),
+                     [](double v) { return std::isfinite(v); })) {
+        ROS_ERROR("default_joint_pos must contain finite values");
+        return false;
+    }
+    return true;
+}
+
+bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
 {
     if (!nh.getParam("joint_names", grasp_joint_names) || grasp_joint_names.empty() ||
         !nh.getParam("arm_joint_names", grasp_arm_joint_names) || grasp_arm_joint_names.empty() ||
-        !nh.getParam("default_joint_pos", grasp_default_joint_pos) ||
-        grasp_default_joint_pos.size() != grasp_joint_names.size() ||
         !nh.getParam("observation_terms", grasp_observation_terms) || grasp_observation_terms.empty() ||
         !nh.getParam("action_dim", config.action_dim) || config.action_dim <= 0) {
-        ROS_ERROR("Grasp profile requires joint_names, arm_joint_names, matching default_joint_pos, observation_terms and positive action_dim");
+        ROS_ERROR("Grasp profile requires joint_names, arm_joint_names, observation_terms and positive action_dim");
         return false;
+    }
+    if (!loadGraspStartConfig(nh, model_path)) return false;
+    std::vector<std::string> vel_joint_names;
+    if (!nh.getParam("joint_vel_names", vel_joint_names)) vel_joint_names = grasp_joint_names;
+    grasp_vel_indices.clear();
+    for (const auto& name : vel_joint_names) {
+        const auto it = std::find(grasp_joint_names.begin(), grasp_joint_names.end(), name);
+        if (it == grasp_joint_names.end()) {
+            ROS_ERROR("joint_vel joint %s is missing from joint_names", name.c_str());
+            return false;
+        }
+        grasp_vel_indices.push_back(static_cast<size_t>(it - grasp_joint_names.begin()));
     }
     for (const auto& arm_joint : grasp_arm_joint_names) {
         if (std::find(grasp_joint_names.begin(), grasp_joint_names.end(), arm_joint) ==
@@ -919,11 +999,6 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh)
             ROS_ERROR("Arm joint %s is missing from joint_names", arm_joint.c_str());
             return false;
         }
-    }
-    if (!std::all_of(grasp_default_joint_pos.begin(), grasp_default_joint_pos.end(),
-                     [](double v) { return std::isfinite(v); })) {
-        ROS_ERROR("default_joint_pos must contain finite values");
-        return false;
     }
     grasp_last_action.assign(config.action_dim, 0.0f);
     grasp_position.assign(grasp_joint_names.size(), 0.0);
@@ -954,13 +1029,15 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh)
 
 bool initializeGraspPolicy(ros::NodeHandle& nh)
 {
-    std::string description_param, base_link, tip_link, joint_state_topic;
+    std::string description_param, base_link, tip_link, joint_state_topic, observation_topic;
     std::vector<double> tcp_offset;
     nh.param<std::string>("robot_description", description_param, "robot_description");
     nh.param<std::string>("base_link", base_link, "base_link");
     nh.param<std::string>("tip_link", tip_link, "arm_left_7_link");
     nh.param<std::string>("joint_state_topic", joint_state_topic, "/joint_states");
     nh.param<std::string>("action_topic", grasp_action_topic, "/pal_policy/raw_actions");
+    nh.param<std::string>("observation_topic", observation_topic, "/pal_policy/observation");
+    nh.param("dry_run", grasp_dry_run, false);
     if (description_param.empty()) { ROS_ERROR("robot_description must name a parameter"); return false; }
     if (!nh.getParam("tcp_offset", tcp_offset)) tcp_offset = {0.0, 0.0, 0.148};
     if (tcp_offset.size() != 3) { ROS_ERROR("tcp_offset must have 3 values"); return false; }
@@ -1016,6 +1093,8 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
     }
     grasp_joint_state_sub = nh.subscribe(joint_state_topic, 1, graspJointStateCb);
     grasp_action_pub = nh.advertise<std_msgs::Float64MultiArray>(grasp_action_topic, 1);
+    grasp_observation_pub = nh.advertise<std_msgs::Float64MultiArray>(observation_topic, 1);
+    if (grasp_dry_run) ROS_WARN("Grasp policy dry run: publishing observations only, no actions");
     ROS_INFO("Grasp policy enabled: %d observations -> %d raw actions at %.1f Hz",
              config.obs_dim, config.action_dim, grasp_rate);
     return true;
@@ -1064,7 +1143,7 @@ int main(int argc, char** argv) {
     ROS_INFO("Loading %s policy: %s", task.c_str(), model_path.c_str());
 
     if (task == "grasp") {
-        if (!loadGraspPolicyConfig(nh)) return 1;
+        if (!loadGraspPolicyConfig(nh, model_path)) return 1;
     } else {
         if (!loadPolicyConfig(model_path)) {
             ROS_FATAL("Failed to load policy configuration from ONNX metadata");
