@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>kangaroo_pal_physics_simulator</name>
+  <version>0.0.15</version>
+  <description>The kangaroo_pal_physics_simulator package</description>
+
+  <author email="sai.kishor@pal-robotics.com">Sai Kishor Kothakota</author>
+
+  <maintainer email="sai.kishor@pal-robotics.com">Sai Kishor Kothakota</maintainer>
+  <maintainer email="adria.roig@pal-robotics.com">Adria Roig</maintainer>
+  <maintainer email="narcis.miguel@pal-robotics.com">Narcis Miguel Baños</maintainer>
+
+  <license>Propietary</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>roscpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>pal_utils</depend>
+  <depend>pal_ariles</depend>
+  <depend>kangaroo_leg_specifics</depend>
+  <depend>pal_geometry_tools</depend>
+  <depend>pluginlib</depend>
+  <depend>pal_physics_simulator</depend>
+  <exec_depend>kangaroo_controller_configuration</exec_depend>
+  <exec_depend>kangaroo_description</exec_depend>
+  <exec_depend>kangaroo_bringup</exec_depend>
+  <exec_depend>kangaroo_leg_test_bench_description</exec_depend>
+
+  <export>
+     <pal_physics_simulator plugin="${prefix}/physics_simulator_plugins.xml" />
+  </export>
+</package>

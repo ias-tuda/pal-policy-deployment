@@ -1,0 +1,4 @@
+force_torque:
+  right_ankle_ft:
+    sensor_joint: right_ft_sensor_joint
+    frame: right_ft_sensor_link

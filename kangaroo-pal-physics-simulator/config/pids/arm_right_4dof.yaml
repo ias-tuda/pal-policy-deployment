@@ -1,0 +1,5 @@
+gains:
+  arm_right_1_joint: {p: 500, d: 10, i: 0, i_clamp: 5, torque_clamp: 40}
+  arm_right_2_joint: {p: 500, d: 10, i: 0, i_clamp: 5, torque_clamp: 40}
+  arm_right_3_joint: {p: 500, d: 10, i: 0, i_clamp: 5, torque_clamp: 20}
+  arm_right_4_joint: {p: 500, d: 10, i: 0, i_clamp: 5, torque_clamp: 20}
