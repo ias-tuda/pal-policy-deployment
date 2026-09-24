@@ -1,4 +1,6 @@
-# Values from Mjlab-Grasp-Pal-Kangaroo-Grippers at training commit 8498955c.
+# Values from Mjlab-Grasp-Pal-Kangaroo-Grippers at training commit d0301718.
+# The IK scales must match the policy's training run: a policy trained before d0301718
+# expects delta_position_scale 0.01, delta_orientation_scale 0.05, max_dq 0.02.
 base_link: base_link
 tip_link: arm_left_7_link
 tcp_offset: [0.0, 0.0, 0.148]
@@ -12,10 +14,10 @@ ik_rate: 500.0
 state_timeout: 0.10
 action_timeout: 0.10
 
-delta_position_scale: 0.01
-delta_orientation_scale: 0.05
+delta_position_scale: 0.03
+delta_orientation_scale: 0.15
 damping: 0.05
-max_dq: 0.02
+max_dq: 0.1
 position_weight: 1.0
 orientation_weight: 1.0
 joint_limit_weight: 1.0
