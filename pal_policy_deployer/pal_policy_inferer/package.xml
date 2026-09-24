@@ -29,6 +29,7 @@
   <depend>sensor_msgs</depend>
   <depend>urdf</depend>
   <depend>kdl_parser</depend>
+  <depend>tf2_ros</depend>
   <export>
 
   </export>

@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   interactive_markers
   pal_statistics
   kdl_parser
+  tf2_ros
   sensor_msgs
   urdf
 )
@@ -19,7 +20,7 @@ find_package(ZLIB REQUIRED)
 catkin_package(
   CATKIN_DEPENDS
     roscpp std_msgs sensor_msgs message_filters visualization_msgs interactive_markers
-    kdl_parser urdf
+    kdl_parser urdf tf2_ros
 )
 find_package(Eigen3 REQUIRED NO_MODULE)
 

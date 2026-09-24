@@ -11,6 +11,7 @@
 #include <nav_msgs/Odometry.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2_ros/transform_listener.h>
 #include <onnxruntime_cxx_api.h>
 #include <boost/filesystem.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -35,6 +36,7 @@
 #include <unordered_set>
 #include <functional>
 #include <cmath>
+#include <limits>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <time.h>
@@ -188,9 +190,15 @@ KDL::JntArray grasp_q;
 std::vector<double> grasp_position;
 std::vector<double> grasp_velocity;
 std::vector<float> grasp_last_action;
-std::vector<double> grasp_mock_object_b;
+std::vector<double> grasp_object_b;
 std::vector<double> grasp_goal_b;
-double grasp_mock_yaw_b = 0.0;
+double grasp_object_yaw_b = 0.0;
+// Tracked object TF frame; empty keeps the fixed mock_object_* values.
+std::string grasp_object_frame;
+std::string grasp_base_link = "base_link";
+double grasp_object_timeout = 0.5;
+std::unique_ptr<tf2_ros::Buffer> grasp_tf_buffer;
+std::unique_ptr<tf2_ros::TransformListener> grasp_tf_listener;
 double grasp_rate = 50.0;
 double grasp_state_timeout = 0.1;
 bool grasp_state_received = false;
@@ -863,10 +871,10 @@ bool buildGraspObservation(std::vector<float>& obs)
             obs.insert(obs.end(), {static_cast<float>(tcp.p.x()), static_cast<float>(tcp.p.y()),
                                    static_cast<float>(tcp.p.z())});
         } else if (term == "object_pos_b") {
-            for (double value : grasp_mock_object_b) obs.push_back(static_cast<float>(value));
+            for (double value : grasp_object_b) obs.push_back(static_cast<float>(value));
         } else if (term == "object_yaw_b") {
-            obs.insert(obs.end(), {static_cast<float>(std::cos(grasp_mock_yaw_b)),
-                                   static_cast<float>(std::sin(grasp_mock_yaw_b))});
+            obs.insert(obs.end(), {static_cast<float>(std::cos(grasp_object_yaw_b)),
+                                   static_cast<float>(std::sin(grasp_object_yaw_b))});
         } else if (term == "goal_pos_b") {
             for (double value : grasp_goal_b) obs.push_back(static_cast<float>(value));
         } else if (term == "tcp_quat_b") {
@@ -878,10 +886,39 @@ bool buildGraspObservation(std::vector<float>& obs)
            std::all_of(obs.begin(), obs.end(), [](float v) { return std::isfinite(v); });
 }
 
+bool updateGraspObject()
+{
+    if (grasp_object_frame.empty()) return true;
+    geometry_msgs::TransformStamped tf;
+    try {
+        tf = grasp_tf_buffer->lookupTransform(grasp_base_link, grasp_object_frame, ros::Time(0));
+    } catch (const tf2::TransformException& e) {
+        ROS_WARN_THROTTLE(1.0, "Grasp policy waiting for object TF %s -> %s: %s",
+                          grasp_base_link.c_str(), grasp_object_frame.c_str(), e.what());
+        return false;
+    }
+    const double object_age = (ros::Time::now() - tf.header.stamp).toSec();
+    if (object_age > grasp_object_timeout) {
+        ROS_WARN_THROTTLE(1.0, "Grasp policy stopped: object TF %s is %.2f s old",
+                          grasp_object_frame.c_str(), object_age);
+        return false;
+    }
+    const auto& t = tf.transform.translation;
+    const auto& r = tf.transform.rotation;
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(tf2::Quaternion(r.x, r.y, r.z, r.w)).getRPY(roll, pitch, yaw);
+    if (!std::isfinite(t.x) || !std::isfinite(t.y) || !std::isfinite(t.z) || !std::isfinite(yaw))
+        return false;
+    grasp_object_b = {t.x, t.y, t.z};
+    grasp_object_yaw_b = yaw;
+    return true;
+}
+
 void graspInferenceTimer(const ros::TimerEvent&)
 {
     std::lock_guard<std::mutex> lock(grasp_mutex);
     if (!grasp_state_received) return;
+    if (!updateGraspObject()) return;
     const double state_age = (ros::Time::now() - grasp_state_time).toSec();
     if (state_age < 0.0 || state_age > grasp_state_timeout) {
         ROS_WARN_THROTTLE(1.0, "Grasp policy stopped: joint state is stale");
@@ -1009,19 +1046,34 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
         if (dim < 0) { ROS_ERROR("Unknown grasp observation term: %s", term.c_str()); return false; }
         config.obs_dim += dim;
     }
-    if (!nh.getParam("mock_object_position_b", grasp_mock_object_b) ||
-        !nh.getParam("goal_position_b", grasp_goal_b) ||
-        grasp_mock_object_b.size() != 3 || grasp_goal_b.size() != 3) {
-        ROS_ERROR("Grasp profile requires 3-value object and goal positions");
+    nh.param<std::string>("object_frame", grasp_object_frame, "");
+    nh.param("object_timeout", grasp_object_timeout, 0.5);
+    if (!grasp_object_frame.empty()) {
+        // Tracked path: object values come only from TF, never from mock parameters.
+        if (nh.hasParam("mock_object_position_b") || nh.hasParam("mock_object_yaw_b")) {
+            ROS_ERROR("Grasp profile sets object_frame and mock_object_*; use one object source");
+            return false;
+        }
+        grasp_object_b.assign(3, std::numeric_limits<double>::quiet_NaN());
+        grasp_object_yaw_b = 0.0;
+    } else {
+        if (!nh.getParam("mock_object_position_b", grasp_object_b) || grasp_object_b.size() != 3) {
+            ROS_ERROR("Grasp profile requires object_frame or a 3-value mock_object_position_b");
+            return false;
+        }
+        nh.param("mock_object_yaw_b", grasp_object_yaw_b, 0.0);
+    }
+    if (!nh.getParam("goal_position_b", grasp_goal_b) || grasp_goal_b.size() != 3) {
+        ROS_ERROR("Grasp profile requires a 3-value goal_position_b");
         return false;
     }
-    nh.param("mock_object_yaw_b", grasp_mock_yaw_b, 0.0);
     nh.param("policy_rate", grasp_rate, 50.0);
     nh.param("state_timeout", grasp_state_timeout, 0.1);
     if (!std::isfinite(grasp_rate) || grasp_rate <= 0.0 ||
         !std::isfinite(grasp_state_timeout) || grasp_state_timeout <= 0.0 ||
-        !std::isfinite(grasp_mock_yaw_b)) {
-        ROS_ERROR("Grasp policy rate, timeout and object yaw must be finite; rate and timeout must be positive");
+        !std::isfinite(grasp_object_yaw_b) ||
+        !std::isfinite(grasp_object_timeout) || grasp_object_timeout <= 0.0) {
+        ROS_ERROR("Grasp policy rate, timeouts and object yaw must be finite; rate and timeouts must be positive");
         return false;
     }
     return true;
@@ -1029,10 +1081,11 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
 
 bool initializeGraspPolicy(ros::NodeHandle& nh)
 {
-    std::string description_param, base_link, tip_link, joint_state_topic, observation_topic;
+    std::string description_param, tip_link, joint_state_topic, observation_topic;
     std::vector<double> tcp_offset;
     nh.param<std::string>("robot_description", description_param, "robot_description");
-    nh.param<std::string>("base_link", base_link, "base_link");
+    nh.param<std::string>("base_link", grasp_base_link, "base_link");
+    const std::string& base_link = grasp_base_link;
     nh.param<std::string>("tip_link", tip_link, "arm_left_7_link");
     nh.param<std::string>("joint_state_topic", joint_state_topic, "/joint_states");
     nh.param<std::string>("action_topic", grasp_action_topic, "/pal_policy/raw_actions");
@@ -1042,8 +1095,9 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
     if (!nh.getParam("tcp_offset", tcp_offset)) tcp_offset = {0.0, 0.0, 0.148};
     if (tcp_offset.size() != 3) { ROS_ERROR("tcp_offset must have 3 values"); return false; }
     if (!std::all_of(tcp_offset.begin(), tcp_offset.end(), [](double v) { return std::isfinite(v); }) ||
-        !std::all_of(grasp_mock_object_b.begin(), grasp_mock_object_b.end(),
-                     [](double v) { return std::isfinite(v); }) ||
+        (grasp_object_frame.empty() &&
+         !std::all_of(grasp_object_b.begin(), grasp_object_b.end(),
+                      [](double v) { return std::isfinite(v); })) ||
         !std::all_of(grasp_goal_b.begin(), grasp_goal_b.end(),
                      [](double v) { return std::isfinite(v); })) {
         ROS_ERROR("TCP offset, object position and goal position must be finite");
@@ -1094,6 +1148,13 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
     grasp_joint_state_sub = nh.subscribe(joint_state_topic, 1, graspJointStateCb);
     grasp_action_pub = nh.advertise<std_msgs::Float64MultiArray>(grasp_action_topic, 1);
     grasp_observation_pub = nh.advertise<std_msgs::Float64MultiArray>(observation_topic, 1);
+    if (!grasp_object_frame.empty()) {
+        grasp_tf_buffer.reset(new tf2_ros::Buffer());
+        grasp_tf_listener.reset(new tf2_ros::TransformListener(*grasp_tf_buffer));
+        ROS_INFO("Grasp object pose from TF %s -> %s", base_link.c_str(), grasp_object_frame.c_str());
+    } else {
+        ROS_WARN("Grasp object pose is the fixed mock_object_position_b");
+    }
     if (grasp_dry_run) ROS_WARN("Grasp policy dry run: publishing observations only, no actions");
     ROS_INFO("Grasp policy enabled: %d observations -> %d raw actions at %.1f Hz",
              config.obs_dim, config.action_dim, grasp_rate);

@@ -1,5 +1,5 @@
 <launch>
-  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_mock.yaml" />
+  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_cube.yaml" />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
     <arg name="local_joint_control_type" value="no_control" />

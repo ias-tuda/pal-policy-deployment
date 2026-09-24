@@ -2,7 +2,7 @@
   <!-- Start the grasp inferer without inference and check its first observation against
        start_observation_distribution.json beside the ONNX model. Run after
        move_to_start_config.py, with the grasp controllers still running. -->
-  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_mock.yaml" />
+  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_cube.yaml" />
   <arg name="joint_state_topic" default="" doc="Override the profile topic; empty uses the profile." />
   <arg name="start_config_path" default="" />
   <arg name="distribution_path" default="" />

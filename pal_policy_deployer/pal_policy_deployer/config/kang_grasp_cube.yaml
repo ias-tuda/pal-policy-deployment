@@ -1,0 +1,23 @@
+# model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-24_13-29-19_grasp-kangaroo-grippers-fastik_s44/model_700.onnx
+model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-24_09-50-45_grasp-kangaroo-grippers_s42/model_1600.onnx
+
+# Model contract from this checkpoint's training configuration. Order matters.
+joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint, gripper_left_finger_joint]
+arm_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+# Subset of joint_names observed by joint_vel; omit to use all joint_names.
+joint_vel_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+observation_terms: [joint_pos_rel, joint_vel, last_action, tcp_pos_b, object_pos_b, object_yaw_b, goal_pos_b, tcp_quat_b]
+action_dim: 7
+robot_description: robot_description
+base_link: base_link
+tip_link: arm_left_7_link
+tcp_offset: [0.0, 0.0, 0.148]
+joint_state_topic: /joint_states
+action_topic: /pal_policy/raw_actions
+policy_rate: 50.0
+state_timeout: 0.1
+
+# Object pose from TF base_link -> object_frame (FoundationPose), expressed in the robot base frame.
+object_frame: cube_1
+object_timeout: 0.5
+goal_position_b: [0.5, 0.12, 0.03]
