@@ -1,0 +1,14 @@
+<launch>
+  <!-- Alternative to kang_grasp_controllers.launch: the left arm and gripper run PAL's
+       position JointTrajectoryControllers, so the motors' own position loops track the
+       targets instead of a software PD with the training gains. Stop subscriber_controller
+       first; both claim the arm joints. No gravity compensation is needed. -->
+  <rosparam command="load" file="$(find kangaroo_controller_configuration)/config/joint_trajectory_controllers/position/arm_7dof_left.yaml" />
+  <rosparam command="load" file="$(find kangaroo_controller_configuration)/config/joint_trajectory_controllers/position/gripper_controller.yaml" />
+
+  <node name="grasp_position_spawner" pkg="controller_manager" type="spawner" output="screen"
+        required="true" args="left_arm_controller gripper_left_controller" />
+
+  <node pkg="pal_policy_deployer" type="joint_state_to_trajectory.py"
+        name="grasp_trajectory_bridge" output="screen" required="true" />
+</launch>

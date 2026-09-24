@@ -5,6 +5,7 @@
   <arg name="action_topic" default="" doc="Override the profile topic; empty uses the profile." />
   <arg name="start_config_path" default="" />
   <arg name="start_controllers" default="true" />
+  <arg name="control" default="impedance" doc="impedance (subscriber_controller) or position (trajectory controllers)" />
   <arg name="dry_run" default="false" />
 
   <node pkg="pal_policy_inferer" type="pal_policy_inferer_mjlab_node"
@@ -27,8 +28,11 @@
     <arg name="policy_node_name" value="pal_policy_inferer_mjlab_node" />
   </include>
 
-  <include if="$(arg start_controllers)"
+  <include if="$(eval start_controllers and control == 'impedance')"
            file="$(find pal_policy_deployer)/launch/kang_grasp_controllers.launch">
     <arg name="profile" value="$(arg profile)" />
   </include>
+
+  <include if="$(eval start_controllers and control == 'position')"
+           file="$(find pal_policy_deployer)/launch/kang_grasp_position_controllers.launch" />
 </launch>

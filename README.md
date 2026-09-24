@@ -8,7 +8,7 @@ ROS packages to run mjlab RL policies on PAL's Kangaroo robot, in simulation and
 | --- | --- |
 | [`pal_policy_deployer`](pal_policy_deployer/README.md) | Runs the ONNX policy (inferer, preprocessor, launch files). Start here. |
 | [`pal_training_ik`](pal_training_ik/README.md) | Turns the grasp policy's 7 raw actions into arm and gripper joint targets (500 Hz IK). |
-| [`pal_gravity_compensation`](pal_gravity_compensation/README.md) | Adds gravity feedforward torques to the arm commands. |
+| [`pal_gravity_compensation`](pal_gravity_compensation/README.md) | Adds gravity feedforward torques to the arm commands. Not used with position control. |
 | [`subscriber_controller`](subscriber_controller/README.md) | 2 kHz ROS controller that sends the received commands to the motors. |
 | [`kangaroo-pal-physics-simulator`](kangaroo-pal-physics-simulator/README.md) | PAL Physics Simulator for Kangaroo. Test here before using the real robot. |
 
@@ -26,6 +26,9 @@ gravity compensation (pal_gravity_compensation)
    ▼
 subscriber_controller  ──►  robot or simulator
 ```
+
+With position control, `joint_state_to_trajectory.py` replaces the last two stages and
+forwards the IK targets to `left_arm_controller` and `gripper_left_controller`.
 
 ## Build
 
@@ -45,7 +48,12 @@ source devel/setup.bash
    ```bash
    roslaunch pal_policy_deployer kang_grasp_controllers.launch
    rosrun pal_policy_deployer move_to_start_config.py _start_config_path:=<path/to/deployment_start_config.json>
+   # position control (motor position loops instead of the software PD; stop subscriber_controller first):
+   roslaunch pal_policy_deployer kang_grasp_position_controllers.launch
+   rosrun pal_policy_deployer move_to_start_config.py _start_config_path:=<path/to/deployment_start_config.json> _state_topic:=/joint_states
    ```
+   If the move fails with "other publishers on /pal_grasp/desired_state_uncompensated", a
+   stopped policy left stale nodes; remove them with `rosnode cleanup`.
 3. Check that the robot's first observation matches the training data:
    ```bash
    roslaunch pal_policy_deployer kang_grasp_check_start.launch
