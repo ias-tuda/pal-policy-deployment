@@ -37,7 +37,7 @@ source devel/setup.bash
 
 ## Quick start: grasp policy
 
-1. Start the simulator:
+1. Simulation only, start the simulator (never against the robot's master):
    ```bash
    roslaunch kangaroo_pal_physics_simulator kangaroo_pal_physics_simulator.launch
    ```
@@ -49,13 +49,17 @@ source devel/setup.bash
 3. Check that the robot's first observation matches the training data:
    ```bash
    roslaunch pal_policy_deployer kang_grasp_check_start.launch
+   # simulation:
+   roslaunch pal_policy_deployer kang_grasp_check_start.launch joint_state_topic:=/simulator/joint_states
    ```
 4. Run the policy and send its commands to the robot:
    ```bash
-   roslaunch pal_policy_deployer kang_grasp_deployer.launch start_controllers:=false publish_commands:=true
+   roslaunch pal_policy_deployer kang_grasp_deployer.launch start_controllers:=false
+   # simulation:
+   roslaunch pal_policy_deployer kang_grasp_deployer.launch start_controllers:=false joint_state_topic:=/simulator/joint_states
    ```
 
-To try it without moving the robot, omit `publish_commands:=true`. You can then watch the
+To try it without moving the robot, pass `publish_commands:=false`. You can then watch the
 outputs on `/pal_policy/raw_actions` and `/pal_training_ik/desired_state`.
 
 For locomotion, model setup and all options, see the
@@ -67,3 +71,10 @@ This repository combines several repos, and each one keeps its full git history.
 `kangaroo-pal-physics-simulator`, `pal_policy_deployer` and `subscriber_controller`
 came from separate repos under `humanoids-lab/kangaroo/pal` on the IAS GitLab.
 Use `git log -- <folder>` to see the history of one package.
+
+
+# Clear old subscriber controller
+
+```
+rosrun controller_manager controller_manager stop subscriber_controller && rosrun controller_manager controller_manager unload subscriber_controller
+```

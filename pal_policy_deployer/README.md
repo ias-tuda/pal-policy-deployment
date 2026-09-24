@@ -41,22 +41,23 @@ The grasp mode reuses the MJLab inference node and sends its seven raw actions t
 `pal_training_ik`. The object pose is currently mocked in the robot base frame in
 `pal_policy_deployer/config/kang_grasp_mock.yaml`.
 
-Start inference and IK with joint-command forwarding disabled:
+Start inference and IK. By default the IK targets go to the subscriber controller:
 
 ```bash
 roslaunch pal_policy_deployer kang_grasp_deployer.launch
 ```
 
-Inspect actions on `/pal_policy/raw_actions` and IK joint targets on
-`/pal_training_ik/desired_state`. To forward targets to the subscriber controller:
+To disable forwarding and only inspect actions on `/pal_policy/raw_actions` and IK joint
+targets on `/pal_training_ik/desired_state`:
 
 ```bash
-roslaunch pal_policy_deployer kang_grasp_deployer.launch publish_commands:=true
+roslaunch pal_policy_deployer kang_grasp_deployer.launch publish_commands:=false
 ```
 
-The simulation launch uses `/simulator/joint_states` for the 500 Hz IK loop. On hardware,
-override it with the robot's high-rate joint-state topic, for example
-`joint_state_topic:=/joint_states`.
+The grasp profile is the one place that sets `joint_state_topic` and `action_topic`; the
+inferer loads it and the IK node reads both from the inferer. The profile targets the
+robot's `/joint_states`. In simulation, override it with the simulator's 500 Hz topic:
+`joint_state_topic:=/simulator/joint_states`.
 
 Pass `profile:=/path/to/another_grasp_profile.yaml` to select a different
 grasp checkpoint. The grasp profile lists the joint order, observation order, action
@@ -142,6 +143,5 @@ After the script succeeds, leave the controllers running and start the policy wi
 spawning a second controller:
 
 ```bash
-roslaunch pal_policy_deployer kang_grasp_deployer.launch \
-  start_controllers:=false publish_commands:=true
+roslaunch pal_policy_deployer kang_grasp_deployer.launch start_controllers:=false
 ```

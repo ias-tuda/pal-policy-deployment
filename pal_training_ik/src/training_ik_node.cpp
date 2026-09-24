@@ -78,8 +78,24 @@ class TrainingIkNode {
                                    "robot_description");
     private_nh_.param<std::string>("base_link", base_link_, "base_link");
     private_nh_.param<std::string>("tip_link", tip_link_, "arm_left_7_link");
-    private_nh_.param<std::string>("action_topic", action_topic_, "/pal_policy/raw_actions");
-    private_nh_.param<std::string>("joint_state_topic", joint_state_topic_, "/joint_states");
+    std::string policy_node_name;
+    private_nh_.param<std::string>("policy_node_name", policy_node_name, "");
+    if (!policy_node_name.empty() && policy_node_name[0] != '/') {
+      policy_node_name.insert(0, "/");
+    }
+    // Topics come from our own override, else the policy profile, else the default,
+    // so the policy profile is the single place they are configured.
+    const auto topic_param = [&](const std::string& name, const std::string& fallback) {
+      std::string value;
+      if (private_nh_.getParam(name, value) && !value.empty()) return value;
+      if (!policy_node_name.empty() &&
+          ros::param::get(policy_node_name + "/" + name, value) && !value.empty()) {
+        return value;
+      }
+      return fallback;
+    };
+    action_topic_ = topic_param("action_topic", "/pal_policy/raw_actions");
+    joint_state_topic_ = topic_param("joint_state_topic", "/joint_states");
     private_nh_.param<std::string>("command_topic", command_topic_,
                                    "/subscriber_controller/desired_state");
     private_nh_.param<std::string>("preview_topic", preview_topic_,
@@ -116,10 +132,7 @@ class TrainingIkNode {
     bool auto_discovered_start_config = false;
     private_nh_.param<std::string>("start_config_path", start_config_path, "");
     if (start_config_path.empty()) {
-      std::string policy_node_name;
-      private_nh_.param<std::string>("policy_node_name", policy_node_name, "");
       if (!policy_node_name.empty()) {
-        if (policy_node_name[0] != '/') policy_node_name.insert(0, "/");
         ros::param::get(policy_node_name + "/start_config_path", start_config_path);
         if (start_config_path.empty()) {
           std::string policy_model_path;

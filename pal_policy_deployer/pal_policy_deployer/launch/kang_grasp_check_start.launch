@@ -3,7 +3,7 @@
        start_observation_distribution.json beside the ONNX model. Run after
        move_to_start_config.py, with the grasp controllers still running. -->
   <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_mock.yaml" />
-  <arg name="joint_state_topic" default="/simulator/joint_states" />
+  <arg name="joint_state_topic" default="" doc="Override the profile topic; empty uses the profile." />
   <arg name="start_config_path" default="" />
   <arg name="distribution_path" default="" />
   <arg name="tolerance" default="0.005" />
@@ -13,7 +13,7 @@
     <rosparam command="load" file="$(arg profile)" />
     <param name="task" value="grasp" />
     <param name="dry_run" value="true" />
-    <param name="joint_state_topic" value="$(arg joint_state_topic)" />
+    <param if="$(eval arg('joint_state_topic') != '')" name="joint_state_topic" value="$(arg joint_state_topic)" />
     <param if="$(eval arg('start_config_path') != '')" name="start_config_path" value="$(arg start_config_path)" />
   </node>
 
