@@ -1,0 +1,34 @@
+<launch>
+  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_mock.yaml" />
+  <arg name="publish_commands" default="false" />
+  <arg name="joint_state_topic" default="/simulator/joint_states" />
+  <arg name="action_topic" default="/pal_policy/raw_actions" />
+  <arg name="start_config_path" default="" />
+  <arg name="start_controllers" default="true" />
+  <arg name="dry_run" default="false" />
+
+  <node pkg="pal_policy_inferer" type="pal_policy_inferer_mjlab_node"
+        name="pal_policy_inferer_mjlab_node" output="screen">
+    <rosparam command="load" file="$(arg profile)" />
+    <param name="task" value="grasp" />
+    <param name="joint_state_topic" value="$(arg joint_state_topic)" />
+    <param name="action_topic" value="$(arg action_topic)" />
+    <param name="dry_run" value="$(arg dry_run)" />
+    <param if="$(eval arg('start_config_path') != '')" name="start_config_path" value="$(arg start_config_path)" />
+  </node>
+
+  <include file="$(find pal_training_ik)/launch/kangaroo_left_grasp.launch">
+    <arg name="publish_commands" value="$(arg publish_commands)" />
+    <arg name="joint_state_topic" value="$(arg joint_state_topic)" />
+    <arg name="action_topic" value="$(arg action_topic)" />
+    <arg name="command_topic" value="/pal_grasp/desired_state_uncompensated" />
+    <arg name="start_gravity_bridge" value="false" />
+    <arg name="start_config_path" value="$(arg start_config_path)" />
+    <arg name="policy_node_name" value="pal_policy_inferer_mjlab_node" />
+  </include>
+
+  <include if="$(arg start_controllers)"
+           file="$(find pal_policy_deployer)/launch/kang_grasp_controllers.launch">
+    <arg name="profile" value="$(arg profile)" />
+  </include>
+</launch>

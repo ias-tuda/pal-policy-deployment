@@ -1,0 +1,26 @@
+<launch>
+  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_mock.yaml" />
+  <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
+    <arg name="spawn_controller" value="false" />
+    <arg name="local_joint_control_type" value="no_control" />
+    <arg name="local_joint_control_leg_length" value="no_control" />
+    <arg name="local_joint_control_ankle" value="no_control" />
+    <arg name="local_joint_control_hip" value="no_control" />
+    <arg name="local_joint_control_hip_z" value="no_control" />
+    <arg name="local_joint_control_pelvis" value="no_control" />
+    <arg name="local_joint_control_arms" value="no_control" />
+  </include>
+
+  <include file="$(find kangaroo_controller_configuration)/launch/local_joint_control/arm_left_7dof.launch">
+    <arg name="local_joint_control_type" value="direct_impedance_control" />
+    <arg name="local_joint_control_pkg" value="pal_local_joint_control" />
+    <arg name="ns" value="subscriber_controller" />
+  </include>
+
+  <include file="$(find pal_gravity_compensation)/launch/gravity_compensation.launch" />
+
+  <node pkg="pal_policy_deployer" type="spawn_grasp_controller.py"
+        name="spawn_grasp_controller" output="screen" required="true">
+    <param name="profile" value="$(arg profile)" />
+  </node>
+</launch>
