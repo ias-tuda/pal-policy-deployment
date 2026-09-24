@@ -11,9 +11,20 @@
     <arg name="local_joint_control_arms" value="no_control" />
   </include>
 
+  <!-- Despite its name, direct_impedance_control is a joint PD computed in software and sent
+       as effort: tau = K (q_des - q) + D (qd_des - qd) + tau_ff, with K and D the
+       impedance_params stiffness_factor and damping_factor. See subscriber_controller/README.md. -->
   <include file="$(find kangaroo_controller_configuration)/launch/local_joint_control/arm_left_7dof.launch">
     <arg name="local_joint_control_type" value="direct_impedance_control" />
     <arg name="local_joint_control_pkg" value="pal_local_joint_control" />
+    <arg name="ns" value="subscriber_controller" />
+  </include>
+
+  <!-- PAL's launcher sets the gripper to NoControl, which never writes a command. Direct
+       position control forwards the target to the motor's own position loop. -->
+  <include file="$(find pal_local_joint_control)/launch/direct_position_control.launch">
+    <arg name="joint_name" value="gripper_left_finger_joint" />
+    <arg name="controller_pkg_name" value="pal_policy_deployer" />
     <arg name="ns" value="subscriber_controller" />
   </include>
 

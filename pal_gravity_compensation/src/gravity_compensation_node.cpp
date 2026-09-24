@@ -235,6 +235,10 @@ class GravityCompensationNode {
     have_target_ = true;
   }
 
+  // Reads the gains of PAL's DirectImpedanceControl, which is a joint PD sent as effort:
+  // tau = stiffness_factor * (q_des - q) + damping_factor * (qd_des - qd) + effort, where
+  // effort is the gravity feedforward published here. publish() uses the same law to
+  // budget the feedforward against the effort limits.
   bool loadGains() {
     if (have_gains_) return true;
     if (ros::WallTime::now() < gain_retry_after_) return false;

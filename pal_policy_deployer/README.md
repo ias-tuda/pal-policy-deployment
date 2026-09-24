@@ -82,7 +82,22 @@ damping directly from `params/env.yaml` beside the selected ONNX model. It sets 
 seven left-arm impedance parameters before loading `subscriber_controller`; missing or
 ambiguous training gains stop controller startup. The currently selected s43 artifact
 specifies stiffness 49.94 and damping 3.179 for left-arm joints 1-2, and stiffness
-26.177 and damping 1.666 for joints 3-7.
+26.177 and damping 1.666 for joints 3-7. PAL's `DirectImpedanceControl` uses these values
+as a plain joint PD (τ = K·e + D·ė + τ_ff), so no conversion is needed. See
+[What the Kangaroo local joint control types do](../subscriber_controller/README.md#what-the-kangaroo-local-joint-control-types-do).
+
+The left gripper runs in `DirectPositionControl`. The IK's gripper target goes to the
+motor's own position loop, not to an effort PD with the training gains (stiffness 20,
+damping 0.5). PAL's default for the gripper is `NoControl`, which ignores all gripper
+commands. The files in `config/local_joint_control/` provide the motor name and a
+2 rad/s command rate limit, about 0.4 s for a 0.75 rad move. The policy itself can ask
+for up to 5 rad/s; raise `limiter_max_rate` to allow that.
+
+In training, pal_mjlab's `RateLimitedJointPositionAction` computes the gripper target as
+`clip(0.0475 + 0.9 * action, 0, 0.95)`. It then limits the change from the last commanded
+target to 0.1 rad once per 50 Hz policy step, starting from 0.0475 after each reset.
+`pal_training_ik` reproduces this. The training gripper was a MuJoCo position actuator
+with kp 20, kv 0.5 and force limited to 20. Here the motor's own position loop replaces it.
 
 ### Move to the start pose first
 

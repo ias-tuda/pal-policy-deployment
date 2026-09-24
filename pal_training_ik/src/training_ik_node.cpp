@@ -286,6 +286,9 @@ class TrainingIkNode {
     if (angle > 1e-6) delta = Eigen::Quaterniond(Eigen::AngleAxisd(angle, rotation_vector / angle));
     desired_orientation_ = (delta * measured_orientation).normalized();
 
+    // Matches pal_mjlab RateLimitedJointPositionAction: scale and offset, clip, then limit
+    // the change from the last commanded target once per policy step. The last target
+    // starts at the default position, as on an MJLab reset.
     const double requested = clampValue(gripper_default_position_ +
         gripper_scale_ * msg->data[6], gripper_lower_, gripper_upper_);
     gripper_target_ += clampValue(requested - gripper_target_,

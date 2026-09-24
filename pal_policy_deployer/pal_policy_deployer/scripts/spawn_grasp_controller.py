@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Load grasp actuator gains from the selected model artifact, then start control."""
+"""Load grasp actuator gains from the selected model artifact, then start control.
+
+PAL's DirectImpedanceControl is a plain joint PD sent as effort,
+tau = stiffness_factor * (q_des - q) + damping_factor * (qd_des - qd) + tau_ff,
+so MJLab's actuator stiffness and damping are copied without conversion.
+"""
 
 import math
 import os

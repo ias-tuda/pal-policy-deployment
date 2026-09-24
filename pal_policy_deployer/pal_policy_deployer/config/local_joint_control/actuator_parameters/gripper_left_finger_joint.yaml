@@ -1,0 +1,15 @@
+# DirectPositionControl only forwards the position target to the motor, which runs its
+# own position loop. It needs the motor name; the model values are unused and left at zero.
+actuator_names:
+  - gripper_left_finger_motor
+check_mode: false
+motor_torque_constant: 0.0
+torque_sensor_offset: 0.0
+reduction_ratio: 0.0
+motor_inertia: 0.0
+static_friction: 0.0
+viscous_friction: 0.0
+joint_elasticity: 0.0
+joint_elasticity_damping: 0.0
+ball_screw_lead: 0.0
+ball_screw_efficiency: 0.0
