@@ -1,6 +1,9 @@
 #include <kdl/chain.hpp>
 #include <kdl/chaindynparam.hpp>
+#include <kdl/chainfksolverpos_recursive.hpp>
+#include <kdl/chainjnttojacsolver.hpp>
 #include <kdl/jntarray.hpp>
+#include <kdl/tree.hpp>
 #include <kdl_parser/kdl_parser.hpp>
 #include <ros/ros.h>
 #include <sensor_msgs/JointState.h>
@@ -78,8 +81,9 @@ class GravityCompensationNode {
         throw std::runtime_error("gravity chain is missing " + name);
       arm_chain_indices_.push_back(std::distance(chain_names_.begin(), found));
     }
-    gravity_solver_.reset(new KDL::ChainDynParam(
-        chain_, KDL::Vector(gravity_base[0], gravity_base[1], gravity_base[2])));
+    gravity_base_ = KDL::Vector(gravity_base[0], gravity_base[1], gravity_base[2]);
+    gravity_solver_.reset(new KDL::ChainDynParam(chain_, gravity_base_));
+    loadPayloadLinks(model, tree);
 
     output_pub_ = nh_.advertise<sensor_msgs::JointState>(output_topic_, 1);
     preview_pub_ = nh_.advertise<sensor_msgs::JointState>(preview_topic_, 1);
@@ -87,11 +91,109 @@ class GravityCompensationNode {
     input_sub_ = nh_.subscribe(input_topic_, 1, &GravityCompensationNode::inputCallback, this);
     timer_ = nh_.createWallTimer(ros::WallDuration(1.0 / rate_),
                                  &GravityCompensationNode::publish, this);
-    ROS_INFO("Gravity bridge: %s -> %s using %s", input_topic_.c_str(),
-             output_topic_.c_str(), gravity_tip_link_.c_str());
+    ROS_INFO("Gravity bridge: %s -> %s using %s plus %zu payload links", input_topic_.c_str(),
+             output_topic_.c_str(), gravity_tip_link_.c_str(), payloads_.size());
   }
 
  private:
+  // A massive link below gravity_tip_link. A chain cannot branch into the gripper fingers,
+  // so their gravity is added through the Jacobian at each link's center of mass.
+  struct PayloadLink {
+    KDL::Chain chain;
+    std::vector<std::string> joint_names;
+    std::vector<std::size_t> arm_columns;
+    std::vector<std::size_t> arm_indices;
+    std::unique_ptr<KDL::ChainFkSolverPos_recursive> fk_solver;
+    std::unique_ptr<KDL::ChainJntToJacSolver> jac_solver;
+    KDL::Vector cog;
+    double mass;
+  };
+
+  struct Mimic {
+    std::string joint;
+    double multiplier, offset;
+  };
+
+  void loadPayloadLinks(const urdf::Model& model, const KDL::Tree& tree) {
+    for (const auto& joint : model.joints_) {
+      if (joint.second->mimic) {
+        mimics_[joint.first] = {joint.second->mimic->joint_name,
+                                joint.second->mimic->multiplier, joint.second->mimic->offset};
+      }
+    }
+    std::vector<KDL::SegmentMap::const_iterator> pending;
+    const auto tip = tree.getSegment(gravity_tip_link_);
+    for (const auto& child : tip->second.children) pending.push_back(child);
+    while (!pending.empty()) {
+      const auto segment = pending.back();
+      pending.pop_back();
+      for (const auto& child : segment->second.children) pending.push_back(child);
+      const KDL::RigidBodyInertia& inertia = segment->second.segment.getInertia();
+      if (inertia.getMass() <= 0.0) continue;
+      std::unique_ptr<PayloadLink> payload(new PayloadLink);
+      if (!tree.getChain(base_link_, segment->first, payload->chain))
+        throw std::runtime_error("cannot build payload chain to " + segment->first);
+      for (const auto& chain_segment : payload->chain.segments) {
+        if (chain_segment.getJoint().getType() == KDL::Joint::None) continue;
+        const std::string& name = chain_segment.getJoint().getName();
+        const auto arm = std::find(arm_names_.begin(), arm_names_.end(), name);
+        if (arm != arm_names_.end()) {
+          payload->arm_columns.push_back(payload->joint_names.size());
+          payload->arm_indices.push_back(std::distance(arm_names_.begin(), arm));
+        }
+        payload->joint_names.push_back(name);
+      }
+      payload->fk_solver.reset(new KDL::ChainFkSolverPos_recursive(payload->chain));
+      payload->jac_solver.reset(new KDL::ChainJntToJacSolver(payload->chain));
+      payload->cog = inertia.getCOG();
+      payload->mass = inertia.getMass();
+      payloads_.push_back(std::move(payload));
+    }
+  }
+
+  // Position of a measured or mimic joint; false if neither is in the state.
+  bool jointPosition(const std::unordered_map<std::string, std::size_t>& state_indices,
+                     const std::string& name, double& position) const {
+    auto found = state_indices.find(name);
+    if (found != state_indices.end()) {
+      position = state_.position[found->second];
+      return std::isfinite(position);
+    }
+    const auto mimic = mimics_.find(name);
+    if (mimic == mimics_.end()) return false;
+    found = state_indices.find(mimic->second.joint);
+    if (found == state_indices.end()) return false;
+    position = mimic->second.multiplier * state_.position[found->second] + mimic->second.offset;
+    return std::isfinite(position);
+  }
+
+  // Adds the holding torque of the payload links to the arm entries of tau.
+  bool addPayloadGravity(const std::unordered_map<std::string, std::size_t>& state_indices,
+                         std::vector<double>& tau) const {
+    for (const auto& payload : payloads_) {
+      KDL::JntArray q(payload->chain.getNrOfJoints());
+      for (std::size_t i = 0; i < payload->joint_names.size(); ++i) {
+        if (!jointPosition(state_indices, payload->joint_names[i], q(i))) {
+          ROS_WARN_THROTTLE(1.0, "Gravity bridge: payload joint %s is missing",
+                            payload->joint_names[i].c_str());
+          return false;
+        }
+      }
+      KDL::Frame frame;
+      KDL::Jacobian jacobian(payload->chain.getNrOfJoints());
+      if (payload->fk_solver->JntToCart(q, frame) < 0 ||
+          payload->jac_solver->JntToJac(q, jacobian) < 0)
+        return false;
+      jacobian.changeRefPoint(frame.M * payload->cog);
+      const KDL::Vector weight = payload->mass * gravity_base_;
+      for (std::size_t k = 0; k < payload->arm_columns.size(); ++k) {
+        const KDL::Twist column = jacobian.getColumn(payload->arm_columns[k]);
+        tau[payload->arm_indices[k]] -= KDL::dot(column.vel, weight);
+      }
+    }
+    return true;
+  }
+
   void stateCallback(const sensor_msgs::JointState::ConstPtr& message) {
     if (message->position.size() != message->name.size() ||
         message->velocity.size() != message->name.size()) return;
@@ -180,13 +282,17 @@ class GravityCompensationNode {
       ROS_ERROR_THROTTLE(1.0, "Gravity bridge: dynamics solve failed");
       return;
     }
+    std::vector<double> arm_gravity(arm_names_.size());
+    for (std::size_t i = 0; i < arm_names_.size(); ++i)
+      arm_gravity[i] = gravity(arm_chain_indices_[i]);
+    if (!addPayloadGravity(state_indices, arm_gravity)) return;
     sensor_msgs::JointState output = target_;
     output.header.stamp = ros::Time::now();
     output.effort.assign(output.name.size(), 0.0);
     for (std::size_t i = 0; i < arm_names_.size(); ++i) {
       const std::size_t actual_index = state_indices.at(arm_names_[i]);
       const std::size_t target_index = target_indices.at(arm_names_[i]);
-      const double tau_gravity = gravity(arm_chain_indices_[i]);
+      const double tau_gravity = arm_gravity[i];
       const double tau_pd = stiffness_[i] *
           (output.position[target_index] - state_.position[actual_index]) +
           damping_[i] * (output.velocity[target_index] - state_.velocity[actual_index]);
@@ -219,6 +325,9 @@ class GravityCompensationNode {
   double state_timeout_, rate_;
   KDL::Chain chain_;
   std::unique_ptr<KDL::ChainDynParam> gravity_solver_;
+  KDL::Vector gravity_base_;
+  std::vector<std::unique_ptr<PayloadLink>> payloads_;
+  std::unordered_map<std::string, Mimic> mimics_;
   sensor_msgs::JointState state_, target_;
   ros::WallTime state_wall_time_, gain_retry_after_;
   bool have_state_ = false, have_target_ = false, have_gains_ = false;

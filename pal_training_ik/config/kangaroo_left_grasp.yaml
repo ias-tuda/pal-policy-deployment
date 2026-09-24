@@ -30,10 +30,10 @@ arm_joint_names:
   - arm_left_6_joint
   - arm_left_7_joint
 
-posture_target: [0.102, 1.452, 1.777, 1.670, -0.458, 0.404, 0.009]
+posture_target: [0.102, 1.452, 1.777, 1.670, 0.458, 0.404, -0.009]
 
 gripper_joint_name: gripper_left_finger_joint
-gripper_default_position: 0.0
+gripper_default_position: 0.0475
 gripper_scale: 0.9
 gripper_lower: 0.0
 gripper_upper: 0.95
