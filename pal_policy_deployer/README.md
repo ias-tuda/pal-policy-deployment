@@ -196,3 +196,37 @@ and the move commands the start pose itself. When the move ends, the bridge stop
 controller holds the last compensated command. At the start pose, the gravity torque divided
 by the stiffness matches the training `target_preload` to within about 2 mrad, so the torque
 changes little when the policy takes over.
+
+## Kangaroo left-arm grasp policy with gravity compensation
+
+`config/kang_grasp_leftarm_gc.yaml` deploys
+`2026-09-28_15-29-30_grasp-leftarm-gc-armv36-slow50-notable-minobs-scratch_s42`. The policy
+controls the left arm and the left jaw only. It reads 23 observations (`joint_pos_rel`,
+`joint_target_rel`, `object_pos_b`, `object_yaw_b`, `goal_pos_b`) and writes 8 actions: 7
+arm deltas in `delta_joint_position` mode and one binary jaw action. The policy was trained
+with gravity compensation: the start `joint_target_rel` mean is about zero, so
+`target_preload` is zero. The inferer publishes to `/pal_grasp/desired_state_uncompensated`,
+and the left-arm gravity bridge started by `kang_grasp_controllers.launch` adds the gravity
+torque while the policy runs. The waist and the right arm stay at `NoControl`. The object
+pose is mocked at the training start mean.
+
+```bash
+P=$(rospack find pal_policy_deployer)/config/kang_grasp_leftarm_gc.yaml
+M=/catkin_ws/src/models/kangaroo-grasp-cube/2026-09-28_15-29-30_grasp-leftarm-gc-armv36-slow50-notable-minobs-scratch_s42
+# 1. Left-arm controllers with the env.yaml gains, plus the left-arm gravity bridge
+roslaunch pal_policy_deployer kang_grasp_controllers.launch profile:=$P
+# 2. Move to the start pose through the gravity bridge
+rosrun pal_policy_deployer move_to_start_config.py \
+  _start_config_path:=$M/deployment_start_config.json
+# 3. Check the first observation against the training start distribution
+roslaunch pal_policy_deployer kang_grasp_check_start.launch profile:=$P joint_state_topic:=/joint_states
+# 4. Inspect targets on /pal_policy/desired_state, then send them to the controller
+roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch profile:=$P \
+  start_controllers:=false joint_state_topic:=/joint_states
+roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch profile:=$P \
+  start_controllers:=false joint_state_topic:=/joint_states publish_commands:=true
+```
+
+Step 4 uses the upper-body deployer launch because it runs the inferer without
+`pal_training_ik`. The profile uses the named ONNX file, which carries the jaw open and
+closed positions. The run only has the `model_200` checkpoint.
