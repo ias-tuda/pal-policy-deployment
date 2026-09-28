@@ -1,0 +1,26 @@
+<launch>
+  <!-- Upper-body grasp policy with delta joint-position actions. The inferer integrates the
+       joint targets itself and sends them, without gravity feedforward, straight to the
+       subscriber controller; there is no IK node and no gravity bridge. -->
+  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_upperbody.yaml" />
+  <arg name="publish_commands" default="false" />
+  <arg name="joint_state_topic" default="/simulator/joint_states" />
+  <arg name="start_config_path" default="" />
+  <arg name="start_controllers" default="true" />
+  <arg name="dry_run" default="false" />
+
+  <node pkg="pal_policy_inferer" type="pal_policy_inferer_mjlab_node"
+        name="pal_policy_inferer_mjlab_node" output="screen" required="true">
+    <rosparam command="load" file="$(arg profile)" />
+    <param name="task" value="grasp" />
+    <param name="joint_state_topic" value="$(arg joint_state_topic)" />
+    <param name="publish_commands" value="$(arg publish_commands)" />
+    <param name="dry_run" value="$(arg dry_run)" />
+    <param if="$(eval arg('start_config_path') != '')" name="start_config_path" value="$(arg start_config_path)" />
+  </node>
+
+  <include if="$(arg start_controllers)"
+           file="$(find pal_policy_deployer)/launch/kang_grasp_upperbody_controllers.launch">
+    <arg name="profile" value="$(arg profile)" />
+  </include>
+</launch>

@@ -1,0 +1,23 @@
+# Gravity bridge for moving the upper-body grasp joints to their start pose. The policy
+# itself runs without gravity feedforward; this is only used by move_to_start.
+robot_description: robot_description
+base_link: base_link
+# Equal to base_link: whole-tree gravity of every massive link below base_link, so the waist
+# also carries the torso and both arms.
+gravity_tip_link: base_link
+# Gravity expressed in base_link. This setup assumes a level base.
+gravity_base: [0.0, 0.0, -9.81]
+input_topic: /pal_grasp/desired_state_uncompensated
+state_topic: /subscriber_controller/actual_js_state
+output_topic: /subscriber_controller/desired_state
+preview_topic: /pal_grasp/desired_state_compensated
+controller_name: subscriber_controller
+rate: 500.0
+state_timeout: 0.25
+# Effort limits from the model's params/env.yaml actuators.
+arm_joint_names: [pelvis_1_joint, pelvis_2_joint,
+                  arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                  arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+effort_limits: [50.0, 50.0,
+                50.0, 50.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+                50.0, 50.0, 25.0, 25.0, 25.0, 25.0, 25.0]

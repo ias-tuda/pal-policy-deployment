@@ -106,6 +106,23 @@ def move():
     if not isinstance(joint_names, list) or not all(isinstance(name, str) for name in joint_names):
         raise ValueError("~joint_names must be a list of joint names")
     targets = load_targets(path, joint_names)
+    # Commanded but not required to settle, e.g. the jaws, which run their own position loop.
+    unverified = rospy.get_param("~unverified_joint_names", [])
+    if not isinstance(unverified, list) or not set(unverified) <= set(joint_names):
+        raise ValueError("~unverified_joint_names must be a subset of ~joint_names")
+    verified_names = [name for name in joint_names if name not in unverified]
+    if not verified_names:
+        raise ValueError("at least one joint must be verified")
+    # Added to the commanded position only: without a gravity bridge, the PD error that holds
+    # the start pose against gravity (the grasp profile's target_preload). Disabled when a
+    # gravity bridge adds that torque instead.
+    preload = [0.0] * len(joint_names)
+    if rospy.get_param("~use_target_preload", True):
+        preload = rospy.get_param("~target_preload", preload)
+    if len(preload) != len(joint_names) or not all(math.isfinite(float(v)) for v in preload):
+        raise ValueError("~target_preload must have one finite value per joint")
+    preload = {name: float(value) for name, value in zip(joint_names, preload)}
+    commanded = {name: targets[name] + preload[name] for name in joint_names}
 
     state_topic = rospy.get_param("~state_topic", "/subscriber_controller/actual_js_state")
     command_topic = rospy.get_param("~command_topic", "/pal_grasp/desired_state_uncompensated")
@@ -157,15 +174,18 @@ def move():
         u = min(1.0, elapsed / duration)
         blend = u * u * (3.0 - 2.0 * u)
         blend_speed = 6.0 * u * (1.0 - u) / duration
-        positions = {name: start[name] + blend * (targets[name] - start[name])
+        expected = {name: start[name] + blend * (targets[name] - start[name])
+                    for name in joint_names}
+        positions = {name: start[name] + blend * (commanded[name] - start[name])
                      for name in joint_names}
-        velocities = {name: blend_speed * (targets[name] - start[name])
+        velocities = {name: blend_speed * (commanded[name] - start[name])
                       for name in joint_names}
         actual, _ = measured.read(joint_names, state_timeout)
-        worst_tracking_error = max(abs(positions[name] - actual[name]) for name in joint_names)
+        worst_joint = max(verified_names, key=lambda name: abs(expected[name] - actual[name]))
+        worst_tracking_error = abs(expected[worst_joint] - actual[worst_joint])
         if worst_tracking_error > tracking_error_limit:
-            raise RuntimeError("tracking error {:.3f} exceeds {:.3f}".format(
-                worst_tracking_error, tracking_error_limit))
+            raise RuntimeError("{} tracking error {:.3f} exceeds {:.3f}".format(
+                worst_joint, worst_tracking_error, tracking_error_limit))
         if publisher.get_num_connections() == 0:
             raise RuntimeError("controller subscriber disconnected")
         if time.monotonic() - last_publisher_check >= 1.0:
@@ -180,17 +200,23 @@ def move():
     settled_since = None
     settle_deadline = time.monotonic() + settle_timeout
     zero_velocities = {name: 0.0 for name in joint_names}
+    error_joint = speed_joint = verified_names[0]
+    worst_error = worst_velocity = float("nan")
     while not rospy.is_shutdown() and time.monotonic() < settle_deadline:
         actual, actual_velocity = measured.read(joint_names, state_timeout)
-        errors = {name: targets[name] - actual[name] for name in joint_names}
-        worst_error = max(abs(error) for error in errors.values())
-        worst_velocity = max(abs(actual_velocity[name]) for name in joint_names)
+        error_joint = max(verified_names, key=lambda name: abs(targets[name] - actual[name]))
+        speed_joint = max(verified_names, key=lambda name: abs(actual_velocity[name]))
+        worst_error = abs(targets[error_joint] - actual[error_joint])
+        worst_velocity = abs(actual_velocity[speed_joint])
         if worst_error <= tolerance and worst_velocity <= velocity_tolerance:
             if settled_since is None:
                 settled_since = time.monotonic()
             elif time.monotonic() - settled_since >= settle_time:
                 rospy.loginfo("Start pose verified: max joint error %.4f, max speed %.4f",
                               worst_error, worst_velocity)
+                for name in unverified:
+                    rospy.loginfo("%s (not verified): %.4f, target %.4f",
+                                  name, actual[name], targets[name])
                 return
         else:
             settled_since = None
@@ -199,10 +225,12 @@ def move():
         if time.monotonic() - last_publisher_check >= 1.0:
             ensure_exclusive_publisher(command_topic)
             last_publisher_check = time.monotonic()
-        publish_command(publisher, joint_names, targets, zero_velocities)
+        publish_command(publisher, joint_names, commanded, zero_velocities)
         rate.sleep()
     if not rospy.is_shutdown():
-        raise RuntimeError("start pose not reached within {:.1f} s".format(settle_timeout))
+        raise RuntimeError(
+            "start pose not reached within {:.1f} s: {} error {:.4f}, {} speed {:.4f}".format(
+                settle_timeout, error_joint, worst_error, speed_joint, worst_velocity))
 
 
 if __name__ == "__main__":

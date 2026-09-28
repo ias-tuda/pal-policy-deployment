@@ -21,6 +21,7 @@
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include <kdl_parser/kdl_parser.hpp>
 #include <urdf/model.h>
+#include <yaml-cpp/yaml.h>
 
 // core libraries
 #include <vector>
@@ -35,6 +36,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <functional>
+#include <regex>
 #include <cmath>
 #include <limits>
 #include <Eigen/Core>
@@ -182,11 +184,42 @@ std::vector<size_t> grasp_vel_indices;
 std::vector<std::string> grasp_observation_terms;
 std::vector<double> grasp_default_joint_pos;
 std::vector<double> grasp_default_joint_vel;
-KDL::Chain grasp_chain;
-std::unique_ptr<KDL::ChainFkSolverPos_recursive> grasp_fk;
-std::vector<std::string> grasp_chain_joint_names;
+// One FK chain per TCP; tcp_pos_b and tcp_quat_b concatenate them in tip_links order.
+struct GraspTcp {
+    KDL::Chain chain;
+    std::unique_ptr<KDL::ChainFkSolverPos_recursive> fk;
+    std::vector<size_t> q_indices;  // into grasp_chain_joint_names
+};
+std::vector<std::string> grasp_tip_links;
+std::vector<GraspTcp> grasp_tcps;
+std::vector<std::string> grasp_chain_joint_names;  // union of all TCP chains
 KDL::Vector grasp_tcp_offset;
-KDL::JntArray grasp_q;
+std::vector<double> grasp_chain_q;
+// action_mode delta_joint_position (pal_mjlab DeltaJointPositionAction):
+// target = clip(target + action_scale * clip(action, -1, 1), target_lower, target_upper).
+// The target is seeded with measured position + target_preload, the PD error that held the
+// training pose against gravity, and is published as absolute joint commands.
+bool grasp_delta_actions = false;
+std::vector<std::string> grasp_action_joint_names;
+std::vector<size_t> grasp_action_indices;  // into grasp_joint_names
+std::vector<double> grasp_action_scale;
+std::vector<double> grasp_target_lower;
+std::vector<double> grasp_target_upper;
+std::vector<double> grasp_target_preload;
+std::vector<double> grasp_target;
+// Optional pal_mjlab BinaryJawAction term after the delta joints in the action vector: an
+// action > 0 moves the jaw target toward closed, otherwise toward open, by at most
+// gripper_rate per step. The target starts at the measured position clamped to the stroke.
+std::vector<std::string> grasp_gripper_joint_names;
+std::vector<size_t> grasp_gripper_indices;  // into grasp_joint_names
+std::vector<double> grasp_gripper_open;
+std::vector<double> grasp_gripper_closed;
+std::vector<double> grasp_gripper_rate;
+std::vector<double> grasp_gripper_target;
+bool grasp_target_seeded = false;
+bool grasp_publish_commands = false;
+ros::Publisher grasp_command_pub;
+ros::Publisher grasp_preview_pub;
 std::vector<double> grasp_position;
 std::vector<double> grasp_velocity;
 std::vector<float> grasp_last_action;
@@ -215,9 +248,11 @@ int graspTermDim(const std::string& term)
     if (term == "joint_pos_rel") return grasp_joint_names.size();
     if (term == "joint_vel") return grasp_vel_indices.size();
     if (term == "last_action") return grasp_last_action.size();
-    if (term == "tcp_pos_b" || term == "object_pos_b" || term == "goal_pos_b") return 3;
+    if (term == "joint_target_rel") return grasp_delta_actions ? grasp_action_joint_names.size() : -1;
+    if (term == "tcp_pos_b") return 3 * grasp_tip_links.size();
+    if (term == "object_pos_b" || term == "goal_pos_b") return 3;
     if (term == "object_yaw_b") return 2;
-    if (term == "tcp_quat_b") return 4;
+    if (term == "tcp_quat_b") return 4 * grasp_tip_links.size();
     return -1;
 }
 
@@ -819,7 +854,7 @@ void graspJointStateCb(const sensor_msgs::JointState::ConstPtr& msg)
     for (size_t i = 0; i < msg->name.size(); ++i) indices[msg->name[i]] = i;
 
     std::lock_guard<std::mutex> lock(grasp_mutex);
-    KDL::JntArray q(grasp_chain_joint_names.size());
+    std::vector<double> q(grasp_chain_joint_names.size());
     std::vector<double> positions(grasp_joint_names.size());
     std::vector<double> velocities(grasp_joint_names.size());
     for (size_t j = 0; j < grasp_chain_joint_names.size(); ++j) {
@@ -829,8 +864,8 @@ void graspJointStateCb(const sensor_msgs::JointState::ConstPtr& msg)
                               grasp_chain_joint_names[j].c_str());
             return;
         }
-        q(j) = msg->position[it->second];
-        if (!std::isfinite(q(j))) return;
+        q[j] = msg->position[it->second];
+        if (!std::isfinite(q[j])) return;
     }
     for (size_t j = 0; j < grasp_joint_names.size(); ++j) {
         const auto it = indices.find(grasp_joint_names[j]);
@@ -842,7 +877,7 @@ void graspJointStateCb(const sensor_msgs::JointState::ConstPtr& msg)
         velocities[j] = it->second < msg->velocity.size() ? msg->velocity[it->second] : 0.0;
         if (!std::isfinite(positions[j]) || !std::isfinite(velocities[j])) return;
     }
-    grasp_q = q;
+    grasp_chain_q.swap(q);
     grasp_position.swap(positions);
     grasp_velocity.swap(velocities);
     grasp_state_time = msg->header.stamp.isZero() ? ros::Time::now() : msg->header.stamp;
@@ -851,11 +886,14 @@ void graspJointStateCb(const sensor_msgs::JointState::ConstPtr& msg)
 
 bool buildGraspObservation(std::vector<float>& obs)
 {
-    KDL::Frame tip;
-    if (grasp_fk->JntToCart(grasp_q, tip) < 0) return false;
-    const KDL::Frame tcp = tip * KDL::Frame(grasp_tcp_offset);
-    double x, y, z, w;
-    tcp.M.GetQuaternion(x, y, z, w);
+    std::vector<KDL::Frame> tcp_frames;
+    for (const auto& tcp : grasp_tcps) {
+        KDL::JntArray q(tcp.q_indices.size());
+        for (size_t j = 0; j < tcp.q_indices.size(); ++j) q(j) = grasp_chain_q[tcp.q_indices[j]];
+        KDL::Frame tip;
+        if (tcp.fk->JntToCart(q, tip) < 0) return false;
+        tcp_frames.push_back(tip * KDL::Frame(grasp_tcp_offset));
+    }
     obs.clear();
     obs.reserve(config.obs_dim);
     for (const auto& term : grasp_observation_terms) {
@@ -867,9 +905,14 @@ bool buildGraspObservation(std::vector<float>& obs)
                 obs.push_back(static_cast<float>(grasp_velocity[j] - grasp_default_joint_vel[j]));
         } else if (term == "last_action") {
             obs.insert(obs.end(), grasp_last_action.begin(), grasp_last_action.end());
+        } else if (term == "joint_target_rel") {
+            for (size_t k = 0; k < grasp_target.size(); ++k)
+                obs.push_back(static_cast<float>(
+                    grasp_target[k] - grasp_default_joint_pos[grasp_action_indices[k]]));
         } else if (term == "tcp_pos_b") {
-            obs.insert(obs.end(), {static_cast<float>(tcp.p.x()), static_cast<float>(tcp.p.y()),
-                                   static_cast<float>(tcp.p.z())});
+            for (const auto& tcp : tcp_frames)
+                obs.insert(obs.end(), {static_cast<float>(tcp.p.x()), static_cast<float>(tcp.p.y()),
+                                       static_cast<float>(tcp.p.z())});
         } else if (term == "object_pos_b") {
             for (double value : grasp_object_b) obs.push_back(static_cast<float>(value));
         } else if (term == "object_yaw_b") {
@@ -878,12 +921,58 @@ bool buildGraspObservation(std::vector<float>& obs)
         } else if (term == "goal_pos_b") {
             for (double value : grasp_goal_b) obs.push_back(static_cast<float>(value));
         } else if (term == "tcp_quat_b") {
-            obs.insert(obs.end(), {static_cast<float>(w), static_cast<float>(x),
-                                   static_cast<float>(y), static_cast<float>(z)});
+            for (const auto& tcp : tcp_frames) {
+                double x, y, z, w;
+                tcp.M.GetQuaternion(x, y, z, w);
+                // mjlab's quat_from_matrix makes the largest-magnitude component positive;
+                // KDL keeps w positive whenever the trace is, which can flip the sign.
+                const double q[] = {w, x, y, z};
+                const double largest = *std::max_element(std::begin(q), std::end(q),
+                    [](double a, double b) { return std::abs(a) < std::abs(b); });
+                const double sign = largest < 0.0 ? -1.0 : 1.0;
+                obs.insert(obs.end(), {static_cast<float>(sign * w), static_cast<float>(sign * x),
+                                       static_cast<float>(sign * y), static_cast<float>(sign * z)});
+            }
         }
     }
-    return obs.size() == static_cast<size_t>(config.obs_dim) &&
-           std::all_of(obs.begin(), obs.end(), [](float v) { return std::isfinite(v); });
+    if (obs.size() != static_cast<size_t>(config.obs_dim) ||
+        !std::all_of(obs.begin(), obs.end(), [](float v) { return std::isfinite(v); })) {
+        ROS_WARN_THROTTLE(1.0, "Grasp observation has %zu values (expected %d) or non-finite ones",
+                          obs.size(), config.obs_dim);
+        return false;
+    }
+    return true;
+}
+
+// The target that holds the measured pose, as pal_mjlab seeds it at reset: q + qfrc_bias / kp.
+void seedGraspTarget()
+{
+    grasp_target.resize(grasp_action_indices.size());
+    for (size_t k = 0; k < grasp_action_indices.size(); ++k) {
+        grasp_target[k] = std::min(grasp_target_upper[k], std::max(grasp_target_lower[k],
+            grasp_position[grasp_action_indices[k]] + grasp_target_preload[k]));
+    }
+    grasp_gripper_target.resize(grasp_gripper_indices.size());
+    for (size_t k = 0; k < grasp_gripper_indices.size(); ++k) {
+        grasp_gripper_target[k] = std::min(grasp_gripper_closed[k], std::max(grasp_gripper_open[k],
+            grasp_position[grasp_gripper_indices[k]]));
+    }
+    if (!grasp_target_seeded) ROS_INFO("Grasp joint targets seeded from measured joint state");
+    grasp_target_seeded = true;
+}
+
+void publishGraspTarget()
+{
+    sensor_msgs::JointState cmd;
+    cmd.header.stamp = ros::Time::now();
+    cmd.name = grasp_action_joint_names;
+    cmd.name.insert(cmd.name.end(), grasp_gripper_joint_names.begin(), grasp_gripper_joint_names.end());
+    cmd.position = grasp_target;
+    cmd.position.insert(cmd.position.end(), grasp_gripper_target.begin(), grasp_gripper_target.end());
+    cmd.velocity.assign(cmd.name.size(), 0.0);
+    cmd.effort.assign(cmd.name.size(), 0.0);
+    grasp_preview_pub.publish(cmd);
+    if (grasp_publish_commands) grasp_command_pub.publish(cmd);
 }
 
 bool updateGraspObject()
@@ -924,6 +1013,8 @@ void graspInferenceTimer(const ros::TimerEvent&)
         ROS_WARN_THROTTLE(1.0, "Grasp policy stopped: joint state is stale");
         return;
     }
+    // Dry run re-seeds every step so joint_target_rel follows the robot for the start check.
+    if (grasp_delta_actions && (!grasp_target_seeded || grasp_dry_run)) seedGraspTarget();
 
     std::vector<float> obs;
     if (!buildGraspObservation(obs)) return;
@@ -952,6 +1043,21 @@ void graspInferenceTimer(const ros::TimerEvent&)
     action_msg.data.assign(output, output + config.action_dim);
     grasp_action_pub.publish(action_msg);
     for (size_t j = 0; j < grasp_last_action.size(); ++j) grasp_last_action[j] = output[j];
+    if (grasp_delta_actions) {
+        for (size_t k = 0; k < grasp_target.size(); ++k) {
+            const double step = grasp_action_scale[k] *
+                std::min(1.0, std::max(-1.0, static_cast<double>(output[k])));
+            grasp_target[k] = std::min(grasp_target_upper[k],
+                                       std::max(grasp_target_lower[k], grasp_target[k] + step));
+        }
+        for (size_t k = 0; k < grasp_gripper_target.size(); ++k) {
+            const double goal = output[grasp_target.size() + k] > 0.0f ? grasp_gripper_closed[k]
+                                                                        : grasp_gripper_open[k];
+            grasp_gripper_target[k] += std::min(grasp_gripper_rate[k],
+                std::max(-grasp_gripper_rate[k], goal - grasp_gripper_target[k]));
+        }
+        publishGraspTarget();
+    }
 }
 
 bool loadGraspStartConfig(ros::NodeHandle& nh, const std::string& model_path)
@@ -1009,6 +1115,158 @@ bool loadGraspStartConfig(ros::NodeHandle& nh, const std::string& model_path)
     return true;
 }
 
+// A per-joint value in MJLab's env.yaml: a scalar, or a map from joint-name regexes of which
+// exactly one must fully match. A missing or null node gives the fallback.
+double envJointValue(const YAML::Node& node, const std::string& joint, double fallback)
+{
+    if (!node || node.IsNull()) return fallback;
+    if (node.IsScalar()) return node.as<double>();
+    if (!node.IsMap()) throw std::runtime_error("expected a number or a map of joint patterns");
+    std::vector<double> matches;
+    for (const auto& entry : node) {
+        if (std::regex_match(joint, std::regex(entry.first.as<std::string>())))
+            matches.push_back(entry.second.as<double>());
+    }
+    if (matches.size() != 1)
+        throw std::runtime_error(joint + " matches " + std::to_string(matches.size()) + " patterns");
+    return matches[0];
+}
+
+// DeltaJointPositionAction's step size is scale * scale_multiplier, read from the model's
+// params/env.yaml so it always matches the checkpoint.
+bool loadGraspActionScale(const std::string& model_path)
+{
+    const std::string env_path = (fs::path(model_path).parent_path() / "params" / "env.yaml").string();
+    try {
+        const YAML::Node action = YAML::LoadFile(env_path)["actions"]["joint_pos"];
+        if (!action) throw std::runtime_error("no actions.joint_pos");
+        grasp_action_scale.clear();
+        for (const auto& joint : grasp_action_joint_names) {
+            grasp_action_scale.push_back(envJointValue(action["scale"], joint, 1.0) *
+                                         envJointValue(action["scale_multiplier"], joint, 1.0));
+            ROS_INFO("  %s: action_scale %g rad/step", joint.c_str(), grasp_action_scale.back());
+        }
+    } catch (const std::exception& e) {
+        ROS_ERROR("Could not read the action scale from %s: %s", env_path.c_str(), e.what());
+        return false;
+    }
+    ROS_INFO("Loaded grasp action scale from %s", env_path.c_str());
+    return true;
+}
+
+// The BinaryJawAction rate limit (rad per step) from actions.gripper in params/env.yaml. The
+// term must exist exactly when the profile names gripper joints, so a profile cannot drop or
+// invent the jaw actions of the checkpoint.
+bool loadGraspGripperRate(const std::string& model_path)
+{
+    const std::string env_path = (fs::path(model_path).parent_path() / "params" / "env.yaml").string();
+    try {
+        const YAML::Node gripper = YAML::LoadFile(env_path)["actions"]["gripper"];
+        if (!gripper != grasp_gripper_joint_names.empty())
+            throw std::runtime_error(gripper ? "the model has a gripper action term; set gripper_joint_names"
+                                             : "the model has no gripper action term; remove gripper_joint_names");
+        if (!gripper) return true;
+        std::vector<std::string> names;
+        for (const auto& name : gripper["actuator_names"]) names.push_back(name.as<std::string>());
+        if (names != grasp_gripper_joint_names)
+            throw std::runtime_error("gripper_joint_names must match actions.gripper.actuator_names");
+        grasp_gripper_rate.clear();
+        for (const auto& joint : grasp_gripper_joint_names) {
+            if (!gripper["rate_limit"] || gripper["rate_limit"].IsNull())
+                throw std::runtime_error("actions.gripper has no rate_limit");
+            grasp_gripper_rate.push_back(envJointValue(gripper["rate_limit"], joint, 0.0));
+            ROS_INFO("  %s: jaw rate %g rad/step", joint.c_str(), grasp_gripper_rate.back());
+        }
+    } catch (const std::exception& e) {
+        ROS_ERROR("Could not read the gripper action from %s: %s", env_path.c_str(), e.what());
+        return false;
+    }
+    return true;
+}
+
+bool loadGraspDeltaActionConfig(ros::NodeHandle& nh, const std::string& model_path)
+{
+    std::string action_mode;
+    nh.param<std::string>("action_mode", action_mode, "raw");
+    if (action_mode == "raw") return true;
+    if (action_mode != "delta_joint_position") {
+        ROS_ERROR("action_mode must be raw or delta_joint_position, not %s", action_mode.c_str());
+        return false;
+    }
+    grasp_delta_actions = true;
+    // The action vector is the delta joints, then the jaws.
+    grasp_gripper_joint_names.clear();
+    nh.getParam("gripper_joint_names", grasp_gripper_joint_names);
+    const size_t n_gripper = grasp_gripper_joint_names.size();
+    if (!nh.getParam("action_joint_names", grasp_action_joint_names) ||
+        grasp_action_joint_names.size() + n_gripper != static_cast<size_t>(config.action_dim)) {
+        ROS_ERROR("delta_joint_position needs action_joint_names and gripper_joint_names with "
+                  "action_dim=%d values together", config.action_dim);
+        return false;
+    }
+    const size_t n = grasp_action_joint_names.size();
+    if (!nh.getParam("target_lower", grasp_target_lower) || grasp_target_lower.size() != n ||
+        !nh.getParam("target_upper", grasp_target_upper) || grasp_target_upper.size() != n) {
+        ROS_ERROR("target_lower and target_upper must have one value per action_joint_names entry");
+        return false;
+    }
+    if (n_gripper > 0 &&
+        (!nh.getParam("gripper_open_pos", grasp_gripper_open) || grasp_gripper_open.size() != n_gripper ||
+         !nh.getParam("gripper_closed_pos", grasp_gripper_closed) || grasp_gripper_closed.size() != n_gripper)) {
+        ROS_ERROR("gripper_open_pos and gripper_closed_pos must have one value per gripper joint");
+        return false;
+    }
+    if (nh.hasParam("action_scale")) {
+        ROS_ERROR("action_scale is read from the model's params/env.yaml; remove it from the profile");
+        return false;
+    }
+    if (!loadGraspActionScale(model_path) || !loadGraspGripperRate(model_path)) return false;
+    if (!nh.getParam("target_preload", grasp_target_preload)) grasp_target_preload.assign(n, 0.0);
+    if (grasp_target_preload.size() != n) {
+        ROS_ERROR("target_preload must have one value per action_joint_names entry");
+        return false;
+    }
+    grasp_action_indices.clear();
+    for (size_t k = 0; k < n; ++k) {
+        const auto it = std::find(grasp_joint_names.begin(), grasp_joint_names.end(),
+                                  grasp_action_joint_names[k]);
+        if (it == grasp_joint_names.end()) {
+            ROS_ERROR("Action joint %s is missing from joint_names", grasp_action_joint_names[k].c_str());
+            return false;
+        }
+        grasp_action_indices.push_back(static_cast<size_t>(it - grasp_joint_names.begin()));
+        const double values[] = {grasp_action_scale[k], grasp_target_lower[k],
+                                 grasp_target_upper[k], grasp_target_preload[k]};
+        if (!std::all_of(std::begin(values), std::end(values), [](double v) { return std::isfinite(v); }) ||
+            grasp_action_scale[k] <= 0.0 || grasp_target_lower[k] > grasp_target_upper[k]) {
+            ROS_ERROR("Invalid action scale or target bounds for %s", grasp_action_joint_names[k].c_str());
+            return false;
+        }
+    }
+    grasp_gripper_indices.clear();
+    for (size_t k = 0; k < n_gripper; ++k) {
+        const std::string& name = grasp_gripper_joint_names[k];
+        const auto it = std::find(grasp_joint_names.begin(), grasp_joint_names.end(), name);
+        if (it == grasp_joint_names.end() ||
+            std::find(grasp_action_joint_names.begin(), grasp_action_joint_names.end(), name) !=
+                grasp_action_joint_names.end()) {
+            ROS_ERROR("Gripper joint %s must be in joint_names and not in action_joint_names", name.c_str());
+            return false;
+        }
+        grasp_gripper_indices.push_back(static_cast<size_t>(it - grasp_joint_names.begin()));
+        const double values[] = {grasp_gripper_open[k], grasp_gripper_closed[k], grasp_gripper_rate[k]};
+        if (!std::all_of(std::begin(values), std::end(values), [](double v) { return std::isfinite(v); }) ||
+            grasp_gripper_rate[k] <= 0.0 || grasp_gripper_open[k] >= grasp_gripper_closed[k]) {
+            ROS_ERROR("Invalid jaw stroke or rate for %s", name.c_str());
+            return false;
+        }
+        ROS_INFO("  %s: binary jaw, open %g, closed %g", name.c_str(), grasp_gripper_open[k],
+                 grasp_gripper_closed[k]);
+    }
+    nh.param("publish_commands", grasp_publish_commands, false);
+    return true;
+}
+
 bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
 {
     if (!nh.getParam("joint_names", grasp_joint_names) || grasp_joint_names.empty() ||
@@ -1040,6 +1298,13 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     grasp_last_action.assign(config.action_dim, 0.0f);
     grasp_position.assign(grasp_joint_names.size(), 0.0);
     grasp_velocity.assign(grasp_joint_names.size(), 0.0);
+    if (!nh.getParam("tip_links", grasp_tip_links)) {
+        std::string tip_link;
+        nh.param<std::string>("tip_link", tip_link, "arm_left_7_link");
+        grasp_tip_links = {tip_link};
+    }
+    if (grasp_tip_links.empty()) { ROS_ERROR("tip_links must name at least one link"); return false; }
+    if (!loadGraspDeltaActionConfig(nh, model_path)) return false;
     config.obs_dim = 0;
     for (const auto& term : grasp_observation_terms) {
         const int dim = graspTermDim(term);
@@ -1081,13 +1346,15 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
 
 bool initializeGraspPolicy(ros::NodeHandle& nh)
 {
-    std::string description_param, tip_link, joint_state_topic, observation_topic;
+    std::string description_param, joint_state_topic, observation_topic;
+    std::string command_topic, preview_topic;
     std::vector<double> tcp_offset;
     nh.param<std::string>("robot_description", description_param, "robot_description");
     nh.param<std::string>("base_link", grasp_base_link, "base_link");
     const std::string& base_link = grasp_base_link;
-    nh.param<std::string>("tip_link", tip_link, "arm_left_7_link");
     nh.param<std::string>("joint_state_topic", joint_state_topic, "/joint_states");
+    nh.param<std::string>("command_topic", command_topic, "/subscriber_controller/desired_state");
+    nh.param<std::string>("preview_topic", preview_topic, "/pal_policy/desired_state");
     nh.param<std::string>("action_topic", grasp_action_topic, "/pal_policy/raw_actions");
     nh.param<std::string>("observation_topic", observation_topic, "/pal_policy/observation");
     nh.param("dry_run", grasp_dry_run, false);
@@ -1112,25 +1379,40 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
     }
     urdf::Model urdf_model;
     KDL::Tree tree;
-    if (!urdf_model.initString(xml) || !kdl_parser::treeFromUrdfModel(urdf_model, tree) ||
-        !tree.getChain(base_link, tip_link, grasp_chain)) {
-        ROS_ERROR("Could not build KDL chain %s -> %s", base_link.c_str(), tip_link.c_str());
+    if (!urdf_model.initString(xml) || !kdl_parser::treeFromUrdfModel(urdf_model, tree)) {
+        ROS_ERROR("Could not parse robot description %s", description_param.c_str());
         return false;
     }
-    for (const auto& segment : grasp_chain.segments) {
-        if (segment.getJoint().getType() != KDL::Joint::None)
-            grasp_chain_joint_names.push_back(segment.getJoint().getName());
-    }
-    if (grasp_chain_joint_names.size() != grasp_chain.getNrOfJoints()) {
-        ROS_ERROR("Could not enumerate the KDL arm-chain joints"); return false;
+    grasp_tcps.clear();
+    // The FK solver keeps a reference to its chain, so the elements must never move.
+    grasp_tcps.reserve(grasp_tip_links.size());
+    grasp_chain_joint_names.clear();
+    for (const auto& tip_link : grasp_tip_links) {
+        grasp_tcps.emplace_back();
+        GraspTcp& tcp = grasp_tcps.back();
+        if (!tree.getChain(base_link, tip_link, tcp.chain)) {
+            ROS_ERROR("Could not build KDL chain %s -> %s", base_link.c_str(), tip_link.c_str());
+            return false;
+        }
+        for (const auto& segment : tcp.chain.segments) {
+            if (segment.getJoint().getType() == KDL::Joint::None) continue;
+            const std::string& name = segment.getJoint().getName();
+            auto it = std::find(grasp_chain_joint_names.begin(), grasp_chain_joint_names.end(), name);
+            if (it == grasp_chain_joint_names.end())
+                it = grasp_chain_joint_names.insert(grasp_chain_joint_names.end(), name);
+            tcp.q_indices.push_back(static_cast<size_t>(it - grasp_chain_joint_names.begin()));
+        }
+        if (tcp.q_indices.size() != tcp.chain.getNrOfJoints()) {
+            ROS_ERROR("Could not enumerate the KDL chain joints to %s", tip_link.c_str()); return false;
+        }
+        tcp.fk.reset(new KDL::ChainFkSolverPos_recursive(tcp.chain));
     }
     for (const auto& arm_joint_name : grasp_arm_joint_names) {
         if (std::find(grasp_chain_joint_names.begin(), grasp_chain_joint_names.end(),
                       arm_joint_name) == grasp_chain_joint_names.end()) {
-            ROS_ERROR("KDL chain is missing %s", arm_joint_name.c_str()); return false;
+            ROS_ERROR("KDL chains are missing %s", arm_joint_name.c_str()); return false;
         }
     }
-    grasp_fk.reset(new KDL::ChainFkSolverPos_recursive(grasp_chain));
 
     Ort::TypeInfo input_info = sess->GetInputTypeInfo(0);
     Ort::TypeInfo output_info = sess->GetOutputTypeInfo(0);
@@ -1154,6 +1436,17 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
         ROS_INFO("Grasp object pose from TF %s -> %s", base_link.c_str(), grasp_object_frame.c_str());
     } else {
         ROS_WARN("Grasp object pose is the fixed mock_object_position_b");
+    }
+    if (grasp_delta_actions) {
+        grasp_preview_pub = nh.advertise<sensor_msgs::JointState>(preview_topic, 1);
+        if (grasp_publish_commands && !grasp_dry_run) {
+            grasp_command_pub = nh.advertise<sensor_msgs::JointState>(command_topic, 1);
+            ROS_WARN("Grasp policy publishes joint commands to %s", command_topic.c_str());
+        } else {
+            grasp_publish_commands = false;
+            ROS_WARN("Grasp joint targets go to %s only; set publish_commands to command the robot",
+                     preview_topic.c_str());
+        }
     }
     if (grasp_dry_run) ROS_WARN("Grasp policy dry run: publishing observations only, no actions");
     ROS_INFO("Grasp policy enabled: %d observations -> %d raw actions at %.1f Hz",

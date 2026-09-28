@@ -37,19 +37,23 @@ def load_distribution(path):
     return terms
 
 
-def feature_labels(term, dim, joint_names):
-    if term in ("joint_pos_rel", "joint_vel") and len(joint_names) == dim:
+def feature_labels(term, dim, joint_names, joint_vel_names):
+    if term in ("joint_pos_rel", "joint_target_rel") and len(joint_names) == dim:
         return list(joint_names)
+    if term == "joint_vel" and len(joint_vel_names) == dim:
+        return list(joint_vel_names)
     if term == "object_yaw_b" and dim == 2:
         return ["cos", "sin"]
-    if term == "tcp_quat_b" and dim == 4:
-        return ["w", "x", "y", "z"]
-    if dim == 3:
-        return ["x", "y", "z"]
+    if term == "tcp_quat_b" and dim % 4 == 0:
+        return ["{}{}".format(axis, i) for i in range(dim // 4) for axis in "wxyz"]
+    if dim % 3 == 0 and term.endswith("_b"):
+        return ["{}{}".format(axis, i) if dim > 3 else axis
+                for i in range(dim // 3) for axis in "xyz"]
     return [str(i) for i in range(dim)]
 
 
-def check_observation(observation, profile_terms, distribution, joint_names, tolerance, term_tolerances):
+def check_observation(observation, profile_terms, distribution, joint_names, joint_vel_names,
+                      tolerance, term_tolerances):
     """Return (rows, ok). Terms are matched by order; the training and profile names differ."""
     if len(profile_terms) != len(distribution):
         raise ValueError("profile has {} observation terms but the distribution has {}".format(
@@ -65,7 +69,7 @@ def check_observation(observation, profile_terms, distribution, joint_names, tol
     for term, (train_name, stats) in zip(profile_terms, distribution):
         dim = len(stats["mean"])
         tol = float(term_tolerances.get(term, term_tolerances.get(train_name, tolerance)))
-        for i, label in enumerate(feature_labels(term, dim, joint_names)):
+        for i, label in enumerate(feature_labels(term, dim, joint_names, joint_vel_names)):
             value = observation[offset + i]
             low, high = stats["min"][i] - tol, stats["max"][i] + tol
             std = stats["std"][i]
@@ -135,6 +139,7 @@ def main():
     try:
         profile_terms = rospy.get_param(policy_node + "/observation_terms")
         joint_names = rospy.get_param(policy_node + "/joint_names", [])
+        joint_vel_names = rospy.get_param(policy_node + "/joint_vel_names", joint_names)
         topic = rospy.get_param("~observation_topic", rospy.get_param(
             policy_node + "/observation_topic", "/pal_policy/observation"))
         path = rospy.get_param("~distribution_path", "")
@@ -159,7 +164,7 @@ def main():
     try:
         observation, count = ObservationCollector(topic).collect(duration, timeout)
         rows, ok = check_observation(observation, profile_terms, distribution, joint_names,
-                                     tolerance, term_tolerances)
+                                     joint_vel_names, tolerance, term_tolerances)
     except (RuntimeError, ValueError) as error:
         rospy.logerr("Start distribution check failed: %s", error)
         return 2

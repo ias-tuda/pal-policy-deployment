@@ -68,8 +68,13 @@ class GravityCompensationNode {
       throw std::runtime_error("robot_description is unavailable");
     urdf::Model model;
     KDL::Tree tree;
+    // gravity_tip_link == base_link leaves the chain empty, so every massive link below
+    // base_link is a payload: whole-tree gravity for branching joint sets such as the waist
+    // and both arms.
+    const bool whole_tree = gravity_tip_link_ == base_link_;
     if (!model.initString(urdf_xml) || !kdl_parser::treeFromUrdfModel(model, tree) ||
-        !tree.getChain(base_link_, gravity_tip_link_, chain_))
+        tree.getSegment(base_link_) == tree.getSegments().end() ||
+        (!whole_tree && !tree.getChain(base_link_, gravity_tip_link_, chain_)))
       throw std::runtime_error("cannot build gravity chain to " + gravity_tip_link_);
     for (const auto& segment : chain_.segments) {
       if (segment.getJoint().getType() != KDL::Joint::None)
@@ -77,13 +82,22 @@ class GravityCompensationNode {
     }
     for (const auto& name : arm_names_) {
       const auto found = std::find(chain_names_.begin(), chain_names_.end(), name);
-      if (found == chain_names_.end())
+      if (found == chain_names_.end() && !whole_tree)
         throw std::runtime_error("gravity chain is missing " + name);
       arm_chain_indices_.push_back(std::distance(chain_names_.begin(), found));
     }
     gravity_base_ = KDL::Vector(gravity_base[0], gravity_base[1], gravity_base[2]);
     gravity_solver_.reset(new KDL::ChainDynParam(chain_, gravity_base_));
     loadPayloadLinks(model, tree);
+    for (std::size_t i = 0; i < arm_names_.size(); ++i) {
+      const bool loaded = std::any_of(payloads_.begin(), payloads_.end(),
+          [i](const std::unique_ptr<PayloadLink>& payload) {
+            return std::find(payload->arm_indices.begin(), payload->arm_indices.end(), i) !=
+                   payload->arm_indices.end();
+          });
+      if (arm_chain_indices_[i] >= chain_names_.size() && !loaded)
+        throw std::runtime_error("no massive link below " + base_link_ + " loads " + arm_names_[i]);
+    }
 
     output_pub_ = nh_.advertise<sensor_msgs::JointState>(output_topic_, 1);
     preview_pub_ = nh_.advertise<sensor_msgs::JointState>(preview_topic_, 1);
@@ -143,6 +157,8 @@ class GravityCompensationNode {
         }
         payload->joint_names.push_back(name);
       }
+      // Links that load no compensated joint, such as the legs in whole-tree mode.
+      if (payload->arm_columns.empty()) continue;
       payload->fk_solver.reset(new KDL::ChainFkSolverPos_recursive(payload->chain));
       payload->jac_solver.reset(new KDL::ChainJntToJacSolver(payload->chain));
       payload->cog = inertia.getCOG();
@@ -282,13 +298,15 @@ class GravityCompensationNode {
       q(i) = state_.position[found->second];
     }
     KDL::JntArray gravity(chain_.getNrOfJoints());
-    if (gravity_solver_->JntToGravity(q, gravity) < 0) {
+    if (chain_.getNrOfJoints() > 0 && gravity_solver_->JntToGravity(q, gravity) < 0) {
       ROS_ERROR_THROTTLE(1.0, "Gravity bridge: dynamics solve failed");
       return;
     }
-    std::vector<double> arm_gravity(arm_names_.size());
-    for (std::size_t i = 0; i < arm_names_.size(); ++i)
-      arm_gravity[i] = gravity(arm_chain_indices_[i]);
+    std::vector<double> arm_gravity(arm_names_.size(), 0.0);
+    for (std::size_t i = 0; i < arm_names_.size(); ++i) {
+      if (arm_chain_indices_[i] < chain_names_.size())
+        arm_gravity[i] = gravity(arm_chain_indices_[i]);
+    }
     if (!addPayloadGravity(state_indices, arm_gravity)) return;
     sensor_msgs::JointState output = target_;
     output.header.stamp = ros::Time::now();

@@ -30,6 +30,7 @@
   <depend>urdf</depend>
   <depend>kdl_parser</depend>
   <depend>tf2_ros</depend>
+  <depend>yaml-cpp</depend>
   <export>
 
   </export>

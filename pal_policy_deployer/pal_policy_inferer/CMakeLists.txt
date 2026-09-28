@@ -40,6 +40,7 @@ target_link_libraries(${PROJECT_NAME}_mjlab_node
   ${Boost_FILESYSTEM_LIBRARY}
   ${Boost_SYSTEM_LIBRARY}
   onnxruntime
+  yaml-cpp
 )
 
 add_executable(${PROJECT_NAME}_ilab_node_v21 src/kang_ilab_node_v21.cpp)

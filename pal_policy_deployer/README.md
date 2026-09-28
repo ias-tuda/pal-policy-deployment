@@ -80,8 +80,9 @@ nodes use it.
 
 When starting the grasp controllers, the launch reads the arm actuator stiffness and
 damping directly from `params/env.yaml` beside the selected ONNX model. It sets the
-seven left-arm impedance parameters before loading `subscriber_controller`; missing or
-ambiguous training gains stop controller startup. The currently selected s43 artifact
+impedance parameters of the profile's `impedance_joint_names` (default: the seven left-arm
+joints) before loading `subscriber_controller`; missing or ambiguous training gains stop
+controller startup. The currently selected s43 artifact
 specifies stiffness 49.94 and damping 3.179 for left-arm joints 1-2, and stiffness
 26.177 and damping 1.666 for joints 3-7. PAL's `DirectImpedanceControl` uses these values
 as a plain joint PD (τ = K·e + D·ė + τ_ff), so no conversion is needed. See
@@ -145,3 +146,53 @@ spawning a second controller:
 ```bash
 roslaunch pal_policy_deployer kang_grasp_deployer.launch start_controllers:=false
 ```
+
+## Kangaroo upper-body grasp policy
+
+`config/kang_grasp_upperbody.yaml` deploys `Mjlab-Grasp-UpperBody-Standing-ArmV36`
+(`model_2999.onnx`). The policy controls the waist, both 7-DoF arms and both jaws. It
+reads 92 observations and writes 18 actions. It uses `action_mode: delta_joint_position`.
+At each 50 Hz step the inferer adds `action_scale * clip(action, -1, 1)` to the joint
+target and clamps the result to `[target_lower, target_upper]`. The inferer computes
+`action_scale` as `scale * scale_multiplier` from `actions.joint_pos` in
+`params/env.yaml` beside the model, so a retrained speed takes effect without editing the
+profile. A profile that still sets `action_scale` is rejected. The inferer publishes the
+targets directly, without `pal_training_ik` and without a gravity bridge. The policy was
+trained without gravity feedforward, so the PD error of the targets holds the arms up.
+The first target is the measured position plus `target_preload`. This is the gravity
+offset that the policy starts from in training, so the pose holds at handover. The
+object pose is mocked at the training start mean.
+
+The controllers launch puts the waist and both arms under `DirectImpedanceControl` with
+the `env.yaml` gains: 150/8 for the waist, 100/6.35 for arm joints 1-4 and 26.177/1.666
+for arm joints 5-7. Both jaws use `DirectPositionControl`. The legs stay at `NoControl`,
+as in the single-arm setup. In training, stiff position control held the legs, so
+something else must keep the robot standing. Stop any other controller that controls the
+waist or the arms first, or the controller switch fails.
+
+```bash
+# 1. Controllers
+roslaunch pal_policy_deployer kang_grasp_upperbody_controllers.launch
+# 2. Move to the start pose with whole-tree gravity compensation (bridge stops on exit)
+roslaunch pal_policy_deployer kang_grasp_upperbody_move_to_start.launch \
+  start_config_path:=/path/to/model_dir/deployment_start_config.json
+# 3. Check the first observation against the training start distribution
+roslaunch pal_policy_deployer kang_grasp_check_start.launch \
+  profile:=$(rospack find pal_policy_deployer)/config/kang_grasp_upperbody.yaml \
+  joint_state_topic:=/joint_states
+# 4. Inspect targets on /pal_policy/desired_state, then send them to the controller
+roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch \
+  start_controllers:=false joint_state_topic:=/joint_states
+roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch \
+  start_controllers:=false joint_state_topic:=/joint_states publish_commands:=true
+```
+
+Without `publish_commands:=true`, the targets go only to `/pal_policy/desired_state`.
+
+The move to the start pose runs `pal_gravity_compensation` with
+`config/gravity_compensation_upperbody.yaml`. Its `gravity_tip_link` is `base_link`, so the
+bridge adds the gravity torque of every link below `base_link` to the waist and both arms,
+and the move commands the start pose itself. When the move ends, the bridge stops and the
+controller holds the last compensated command. At the start pose, the gravity torque divided
+by the stiffness matches the training `target_preload` to within about 2 mrad, so the torque
+changes little when the policy takes over.

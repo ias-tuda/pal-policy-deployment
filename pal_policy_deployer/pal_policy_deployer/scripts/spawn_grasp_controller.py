@@ -15,7 +15,8 @@ import yaml
 from controller_manager_msgs.srv import LoadController, SwitchController, UnloadController
 
 
-JOINTS = ["arm_left_{}_joint".format(index) for index in range(1, 8)]
+# Used when the profile has no impedance_joint_names: the single-arm grasp profiles.
+DEFAULT_JOINTS = ["arm_left_{}_joint".format(index) for index in range(1, 8)]
 CONTROLLER = "subscriber_controller"
 
 
@@ -37,6 +38,9 @@ def load_gains(profile_path):
         profile = yaml.safe_load(stream)
     if not isinstance(profile, dict) or not profile.get("model_path"):
         raise ValueError("grasp profile has no model_path")
+    joints = profile.get("impedance_joint_names", DEFAULT_JOINTS)
+    if not isinstance(joints, list) or not joints or not all(isinstance(j, str) for j in joints):
+        raise ValueError("impedance_joint_names must be a non-empty list of joint names")
     model_path = profile["model_path"]
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.path.dirname(profile_path), model_path)
@@ -46,7 +50,7 @@ def load_gains(profile_path):
         environment = yaml.load(stream, Loader=yaml.BaseLoader)
     entries = list(actuator_entries(environment))
     gains = {}
-    for joint in JOINTS:
+    for joint in joints:
         matches = [entry for entry in entries
                    if any(re.fullmatch(pattern, joint)
                           for pattern in entry["target_names_expr"])]

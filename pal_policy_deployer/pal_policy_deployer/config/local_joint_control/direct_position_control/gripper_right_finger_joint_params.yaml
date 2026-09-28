@@ -1,0 +1,6 @@
+# Rate limit on the position command in rad/s. Training limits the gripper target to
+# 0.1 rad per 50 Hz policy step (pal_mjlab RateLimitedJointPositionAction), i.e. 5 rad/s,
+# and pal_training_ik does the same. 2 rad/s moves the gripper more gently, taking about
+# 0.5 s for the full stroke. PAL's arms use 1.
+limiter_max_rate: 2
+circular_buffer_capacity: 10
