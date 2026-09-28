@@ -10,7 +10,7 @@ import rospy
 from sensor_msgs.msg import JointState
 
 
-DEFAULT_JOINTS = ["arm_left_{}_joint".format(i) for i in range(1, 8)]
+DEFAULT_JOINTS = ["arm_left_{}_joint".format(i) for i in range(1, 8)] + ["gripper_left_finger_joint"]
 
 
 def load_targets(path, joint_names):
@@ -107,7 +107,8 @@ def move():
         raise ValueError("~joint_names must be a list of joint names")
     targets = load_targets(path, joint_names)
     # Commanded but not required to settle, e.g. the jaws, which run their own position loop.
-    unverified = rospy.get_param("~unverified_joint_names", [])
+    unverified = rospy.get_param("~unverified_joint_names",
+                                 [name for name in joint_names if name.startswith("gripper_")])
     if not isinstance(unverified, list) or not set(unverified) <= set(joint_names):
         raise ValueError("~unverified_joint_names must be a subset of ~joint_names")
     verified_names = [name for name in joint_names if name not in unverified]

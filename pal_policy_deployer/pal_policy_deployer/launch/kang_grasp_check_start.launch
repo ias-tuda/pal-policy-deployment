@@ -7,9 +7,10 @@
   <arg name="start_config_path" default="" />
   <arg name="distribution_path" default="" />
   <arg name="tolerance" default="0.005" />
+  <arg name="verbose" default="false" doc="Also print features that are inside the distribution." />
 
   <node pkg="pal_policy_inferer" type="pal_policy_inferer_mjlab_node"
-        name="pal_policy_inferer_mjlab_node" output="screen">
+        name="pal_policy_inferer_mjlab_node" output="screen" clear_params="true">
     <rosparam command="load" file="$(arg profile)" />
     <param name="task" value="grasp" />
     <param name="dry_run" value="true" />
@@ -21,5 +22,6 @@
         name="check_start_distribution" output="screen" required="true">
     <param name="distribution_path" value="$(arg distribution_path)" />
     <param name="tolerance" value="$(arg tolerance)" />
+    <param name="verbose" value="$(arg verbose)" />
   </node>
 </launch>

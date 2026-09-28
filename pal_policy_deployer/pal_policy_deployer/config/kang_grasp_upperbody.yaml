@@ -1,4 +1,4 @@
-model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-28_11-57-28_grasp-upperbody-standing-armv36-slow50-notable-binjaw-scratch_s42/model_300.onnx
+model_path: /catkin_ws/src/models/kangaroo_grasp_upper_body_standing/2026-09-28_11-57-28_grasp-upperbody-standing-armv36-slow50-notable-binjaw-scratch_s42/model_700.onnx
 
 # Model contract of Mjlab-Grasp-UpperBody-Standing-ArmV36-Pal-Kangaroo-Grippers at pal_mjlab
 # commit dfac6068: waist, both arms and both jaws, no gravity feedforward. Order matters.
@@ -63,6 +63,7 @@ state_timeout: 0.1
 
 # Temporary fixed observations, expressed in the robot base frame; the training start means.
 # Replace the object values with a pose source before physical deployment.
-mock_object_position_b: [0.498, 0.109, -0.053]
-mock_object_yaw_b: 0.0
+# mock_object_position_b: [0.498, 0.109, -0.053]
+# mock_object_yaw_b: 0.0
+object_frame: cube_1
 goal_position_b: [0.5, 0.11, 0.085]

@@ -10,7 +10,7 @@
   <arg name="dry_run" default="false" />
 
   <node pkg="pal_policy_inferer" type="pal_policy_inferer_mjlab_node"
-        name="pal_policy_inferer_mjlab_node" output="screen" required="true">
+        name="pal_policy_inferer_mjlab_node" output="screen" required="true" clear_params="true">
     <rosparam command="load" file="$(arg profile)" />
     <param name="task" value="grasp" />
     <param name="joint_state_topic" value="$(arg joint_state_topic)" />

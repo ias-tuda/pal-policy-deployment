@@ -1,4 +1,4 @@
-model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-28_15-29-30_grasp-leftarm-gc-armv36-slow50-notable-minobs-scratch_s42/2026-09-28_15-29-30_grasp-leftarm-gc-armv36-slow50-notable-minobs-scratch_s42.onnx
+model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-28_15-29-35_grasp-leftarm-gc-armv36-slow50-notable-minobs-scratch_s123/model_500.onnx
 
 # Model contract of grasp-leftarm-gc-armv36-slow50-notable-minobs: left arm and left jaw only,
 # trained with gravity compensation, minimal observations (23). Order matters.

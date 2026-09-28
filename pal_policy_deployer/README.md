@@ -118,7 +118,8 @@ The script sends a smooth 50 Hz joint target through the gravity bridge to
 and exits successfully only after the controller's measured arm joints remain within
 0.05 rad of the JSON targets and below 0.05 rad/s for 0.5 s. It fails if feedback is stale, the controller
 disconnects, tracking error grows too large, or the pose cannot be reached. By default
-it moves the seven left arm joints. Use `_joint_names:="[...]"` to select a different
+it moves the seven left arm joints and reopens the left gripper; gripper joints are commanded
+but not required to settle (`_unverified_joint_names`). Use `_joint_names:="[...]"` to select a different
 set of joints that the subscriber controller reports in `actual_js_state`.
 
 ### Check the start observation
