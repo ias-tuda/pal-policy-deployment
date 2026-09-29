@@ -1,0 +1,82 @@
+# ChArUco board from hardware/charuco_board.pdf (print at 100 %: 120 x 150 mm, 4 x 5 squares).
+# The square size sets the scale of the calibrated translation: check a printed square
+# with a caliper (printers often scale) and correct square_length and marker_length.
+board:
+  squares_x: 4
+  squares_y: 5
+  square_length: 0.030        # m
+  marker_length: 0.022        # m
+  dictionary: DICT_4X4_50
+  min_corners: 8              # fewer detected ChArUco corners -> sample rejected
+
+# Cameras the board on the left arm can see in front of the body; pick one with
+# camera:=<name> (launch files) or --camera <name> (collect.py). mount_frame is the URDF frame
+# whose <origin> in arm/base_frame (xacro:sensor_d435 in kangaroo_description torso.urdf.xacro)
+# the calibration corrects.
+default_camera: torso_front
+cameras:
+  torso_front:
+    image_topic: /torso_front_rgbd_camera/color/image_raw
+    info_topic: /torso_front_rgbd_camera/color/camera_info
+    optical_frame: torso_front_rgbd_camera_color_optical_frame
+    mount_frame: torso_front_rgbd_camera_bottom_screw_frame
+  waist_front:
+    image_topic: /waist_front_rgbd_camera/color/image_raw
+    info_topic: /waist_front_rgbd_camera/color/camera_info
+    optical_frame: waist_front_rgbd_camera_color_optical_frame
+    mount_frame: waist_front_rgbd_camera_bottom_screw_frame
+
+arm:
+  controller: left_arm_controller
+  base_frame: torso_link            # parent of the camera mount in the URDF
+  ee_frame: arm_left_7_link         # link the board is rigidly mounted to
+  max_speed: 0.25                   # rad/s, fastest joint
+
+# Motion is planned by MoveIt (move_group on the robot) around the URDF collision meshes.
+moveit:
+  group: left_arm
+  ee_link: arm_left_7_link
+  velocity_scaling: 0.1
+  planning_time: 5.0
+  replan_attempts: 5                # replans when a plan breaks the safety rules below
+  # The board is attached to the gripper as a box (from config/board_on_gripper.yaml once the
+  # board was seen, else the safety cylinder), grown by board_margin on every side.
+  board_margin: 0.02
+  board_thickness: 0.01
+  board_touch_links: [arm_left_7_link, arm_left_tool_link, gripper_left_base_link,
+                      gripper_left_inner_finger_left_link, gripper_left_outer_finger_left_link,
+                      gripper_left_fingertip_left_link, gripper_left_inner_finger_right_link,
+                      gripper_left_outer_finger_right_link, gripper_left_fingertip_right_link]
+
+safety:
+  # The board volume: a cylinder around the gripper axis (ee_frame z). The 12 x 15 cm
+  # board sits on the ~13 cm long gripper; the volume covers it in any orientation.
+  board_volume: {radius: 0.10, z_min: -0.02, z_max: 0.20}
+  # Wrist and every board point must stay in this box in front of the torso (base_frame).
+  workspace: {x_min: 0.20, x_max: 0.75, y_min: -0.15, y_max: 0.60, z_min: -0.30, z_max: 0.55,
+              elbow_x_min: -0.10}
+  wrist_link: arm_left_6_link
+  elbow_link: arm_left_4_link
+  # Board points keep this distance to the arm's upper arm and forearm (link origin to origin).
+  board_arm_clearance: 0.03
+  arm_segments: [[arm_left_2_link, arm_left_4_link], [arm_left_4_link, arm_left_5_link]]
+
+collect:
+  poses_file: $(find kangaroo_camera_calibration)/config/poses/{camera}.yaml
+  output_dir: $(find kangaroo_camera_calibration)/data   # <output_dir>/<camera>_<date>/
+  # Many different seeds matter more than many samples per seed (see README).
+  samples_per_seed: 10
+  # Uniform random offset per joint (rad) around each taught seed pose.
+  joint_offsets: [0.12, 0.12, 0.15, 0.15, 0.35, 0.30, 0.50]
+  random_seed: 0
+  settle_time: 1.0          # s the arm must be still before an image is taken
+  max_pnp_rms: 1.5          # px, single-image fit; larger means a bad detection
+  # Before moving, the predicted board (from the seed detection and the nominal camera pose)
+  # must lie inside the image with this margin and face the camera within max_view_angle.
+  image_margin: 40          # px
+  max_view_angle: 60.0      # deg between board normal and the viewing ray
+  min_distance: 0.25        # m, camera to board center
+  max_distance: 1.00
+  return_to_start: true
+  # Hanging rest pose, used as a detour when no plan to a seed stays in front of the body.
+  home_pose: [0.248, 1.26, 1.57, 0.799, 0.0, 0.0, 0.0]

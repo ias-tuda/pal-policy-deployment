@@ -1,0 +1,12 @@
+joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint,
+  arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+poses:
+- corners: 12
+  joints: [-0.40036, 0.95979, 2.45823, 1.64552, 0.03016, -0.16033, -0.17724]
+  name: seed_0
+- corners: 12
+  joints: [-0.02684, 1.43515, 2.05485, 1.52018, 0.00616, -0.39024, -0.14206]
+  name: seed_1
+- corners: 12
+  joints: [-0.99541, 2.307, 1.17913, 0.83791, 1.88538, 2.41813, -2.39883]
+  name: seed_2

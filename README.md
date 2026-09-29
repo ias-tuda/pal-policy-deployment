@@ -11,6 +11,7 @@ ROS packages to run mjlab RL policies on PAL's Kangaroo robot, in simulation and
 | [`pal_gravity_compensation`](pal_gravity_compensation/README.md) | Adds gravity feedforward torques to the arm commands. Not used with position control. |
 | [`subscriber_controller`](subscriber_controller/README.md) | 2 kHz ROS controller that sends the received commands to the motors. |
 | [`kangaroo-pal-physics-simulator`](kangaroo-pal-physics-simulator/README.md) | PAL Physics Simulator for Kangaroo. Test here before using the real robot. |
+| [`kangaroo_camera_calibration`](kangaroo_camera_calibration/README.md) | Calibrates the torso/waist camera poses with a ChArUco board on the left arm. |
 
 ## How the grasp pipeline fits together
 

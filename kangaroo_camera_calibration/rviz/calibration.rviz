@@ -1,0 +1,74 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/Grid
+      Name: Grid
+      Enabled: true
+      Reference Frame: <Fixed Frame>
+      Cell Size: 0.1
+      Plane Cell Count: 20
+    - Class: rviz/RobotModel
+      Name: RobotModel
+      Enabled: true
+      Robot Description: robot_description
+      Alpha: 1
+    - Class: rviz/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+      Show Axes: true
+      Show Arrows: false
+      Marker Scale: 0.3
+      Frames:
+        All Enabled: false
+        torso_front_rgbd_camera_color_optical_frame:
+          Value: true
+        waist_front_rgbd_camera_color_optical_frame:
+          Value: true
+        charuco_board_detected:
+          Value: true
+        arm_left_7_link:
+          Value: true
+        torso_link:
+          Value: true
+    - Class: rviz/InteractiveMarkers
+      Name: Pose teacher
+      Enabled: true
+      Update Topic: /pose_teacher/update
+      Show Descriptions: true
+      Show Axes: false
+      Show Visual Aids: false
+    - Class: rviz/MarkerArray
+      Name: Recorded poses
+      Enabled: true
+      Marker Topic: /pose_teacher/recorded_poses
+    - Class: rviz/Image
+      Name: Board detection
+      Enabled: true
+      Image Topic: /charuco_detector/image
+      Transport Hint: raw
+      Queue Size: 1
+  Global Options:
+    Fixed Frame: torso_link
+    Background Color: 48; 48; 48
+    Frame Rate: 30
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 2.0
+      Focal Point: {X: 0.3, Y: 0.1, Z: 0.0}
+      Pitch: 0.4
+      Yaw: 3.6
+Window Geometry:
+  Width: 1600
+  Height: 1000
+  Board detection:
+    collapsed: false

@@ -1,0 +1,9 @@
+<launch>
+  <!-- Board detection only; keep it running during collect.py to watch the image in RViz. -->
+  <arg name="camera" default="torso_front"/>
+  <arg name="config" default="$(find kangaroo_camera_calibration)/config/calibration.yaml"/>
+  <node pkg="kangaroo_camera_calibration" type="board_detector.py" name="charuco_detector" output="screen">
+    <param name="config" value="$(arg config)"/>
+    <param name="camera" value="$(arg camera)"/>
+  </node>
+</launch>
