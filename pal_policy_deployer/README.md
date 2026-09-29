@@ -213,6 +213,10 @@ torque while the policy runs. The waist and the right arm stay at `NoControl`. T
 pose comes from the `cube_1` TF frame. The jaw point for `jaw_to_object_b` is the fingertip
 midpoint, from the `jaw_mid_*` table in `arm_left_7_link` measured in MJLab.
 
+pal@kangaroo-5c:~$ cat /tmp/robot_type.yaml 
+robot_type: full_7dof_gripper
+
+
 ```bash
 P=$(rospack find pal_policy_deployer)/config/kang_grasp_leftarm_gc.yaml
 M=/catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123

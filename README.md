@@ -40,6 +40,18 @@ catkin_make
 source devel/setup.bash
 ```
 
+## ONNX
+```
+cd /tmp
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-1.17.0.tgz
+tar xzf onnxruntime-linux-x64-1.17.0.tgz
+sudo mv onnxruntime-linux-x64-1.17.0 /opt/onnxruntime
+
+# so the nodes can find libonnxruntime.so when they run
+echo /opt/onnxruntime/lib | sudo tee /etc/ld.so.conf.d/onnxruntime.conf
+sudo ldconfig
+```
+
 ## Quick start: grasp policy
 
 1. Simulation only, start the simulator (never against the robot's master):
