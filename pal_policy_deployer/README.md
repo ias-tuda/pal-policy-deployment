@@ -201,19 +201,21 @@ changes little when the policy takes over.
 ## Kangaroo left-arm grasp policy with gravity compensation
 
 `config/kang_grasp_leftarm_gc.yaml` deploys
-`2026-09-28_15-29-30_grasp-leftarm-gc-armv36-slow50-notable-minobs-scratch_s42`. The policy
-controls the left arm and the left jaw only. It reads 23 observations (`joint_pos_rel`,
-`joint_target_rel`, `object_pos_b`, `object_yaw_b`, `goal_pos_b`) and writes 8 actions: 7
+`2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123`. The policy
+controls the left arm and the left jaw only. It reads 38 observations (`joint_pos_rel`,
+`joint_vel`, `last_action`, `joint_target_rel`, `jaw_to_object_b`, `object_yaw_to_jaw`,
+`object_to_goal_b`) and writes 8 actions: 7
 arm deltas in `delta_joint_position` mode and one binary jaw action. The policy was trained
 with gravity compensation: the start `joint_target_rel` mean is about zero, so
 `target_preload` is zero. The inferer publishes to `/pal_grasp/desired_state_uncompensated`,
 and the left-arm gravity bridge started by `kang_grasp_controllers.launch` adds the gravity
 torque while the policy runs. The waist and the right arm stay at `NoControl`. The object
-pose is mocked at the training start mean.
+pose comes from the `cube_1` TF frame. The jaw point for `jaw_to_object_b` is the fingertip
+midpoint, from the `jaw_mid_*` table in `arm_left_7_link` measured in MJLab.
 
 ```bash
 P=$(rospack find pal_policy_deployer)/config/kang_grasp_leftarm_gc.yaml
-M=/catkin_ws/src/models/kangaroo-grasp-cube/2026-09-28_15-29-30_grasp-leftarm-gc-armv36-slow50-notable-minobs-scratch_s42
+M=/catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123
 # 1. Left-arm controllers with the env.yaml gains, plus the left-arm gravity bridge
 roslaunch pal_policy_deployer kang_grasp_controllers.launch profile:=$P
 # 2. Move to the start pose through the gravity bridge
@@ -228,6 +230,43 @@ roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch profile:=$P \
   start_controllers:=false joint_state_topic:=/joint_states publish_commands:=true
 ```
 
+To run step 2 and the last command of step 4 in one go (skips step 3; the policy starts only
+if the move succeeds):
+
+```bash
+rosrun pal_policy_deployer move_and_deploy.sh $M/deployment_start_config.json profile:=$P \
+  start_controllers:=false joint_state_topic:=/joint_states publish_commands:=true
+```
+
 Step 4 uses the upper-body deployer launch because it runs the inferer without
 `pal_training_ik`. The profile uses the named ONNX file, which carries the jaw open and
-closed positions. The run only has the `model_200` checkpoint.
+closed positions.
+
+### Start, stop and home through ROS
+
+`policy_supervisor.py` runs the move to the start pose and the policy on ROS service calls, so
+other tools (for example the phone page in [`policy_web_control`](../policy_web_control/README.md))
+need no shell. Start the controllers of step 1 first, then:
+
+```bash
+roslaunch pal_policy_deployer kang_grasp_supervisor.launch profile:=$P
+rosservice call /pal_policy_supervisor/go_home   # stop the policy, run move_to_start_config.py
+rosservice call /pal_policy_supervisor/start     # step 4 with publish_commands:=true
+rosservice call /pal_policy_supervisor/stop      # Ctrl-C to the running job
+```
+
+Only one job runs at a time; `start` is refused while one runs.
+
+Instead of the step 3 check, `start` is refused while the policy is not ready. While the policy
+is not running, the supervisor runs the inferer with `dry_run:=true`, which publishes an
+observation only while the joint state and the object TF are fresh. The policy is ready when the
+last 0.5 s of observations lie inside the training `[min, max]` widened by the `ood_margins` in
+`kang_grasp_supervisor.launch` (0.15 rad for joints, 3 cm for the object terms). Only such
+serious misses block the start; features outside the strict step 3 range are listed as notes.
+The result is published as JSON on `~readiness` (latched, 2 Hz). Pass `require_ready:=false`
+to start regardless.
+The node publishes `idle`, `policy` or `home` on `~state` (latched) and each output line of the
+jobs on `~log`. Without `start_config_path:=`, it uses `deployment_start_config.json` beside
+the profile's `model_path`. Pass extra deployer args with `launch_args:="..."` and extra
+`move_to_start_config.py` params with `home_args:="..."`. The default
+`home_args:="_position_tolerance:=0.1"` accepts a start pose that stays up to 0.1 rad off.

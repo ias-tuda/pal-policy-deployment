@@ -1,0 +1,33 @@
+<launch>
+  <!-- Start the grasp controllers, then start, stop and home the grasp policy on ROS service
+       calls (~start, ~stop, ~go_home), and publish on ~readiness whether it may start. -->
+  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_leftarm_gc.yaml" />
+  <arg name="start_config_path" default="" doc="Empty uses deployment_start_config.json beside the profile's model." />
+  <arg name="launch_args" default="" doc="Extra args for kang_grasp_upperbody_deployer.launch." />
+  <arg name="home_args" default="_position_tolerance:=0.1" doc="Extra params for move_to_start_config.py." />
+  <arg name="require_ready" default="true" doc="Refuse ~start while ~readiness is not ready." />
+  <arg name="start_controllers" default="false" doc="false when kang_grasp_controllers.launch already runs." />
+
+  <include if="$(arg start_controllers)" file="$(find pal_policy_deployer)/launch/kang_grasp_controllers.launch">
+    <arg name="profile" value="$(arg profile)" />
+  </include>
+
+  <node pkg="pal_policy_deployer" type="policy_supervisor.py" name="pal_policy_supervisor" output="screen">
+    <param name="profile" value="$(arg profile)" />
+    <param name="start_config_path" value="$(arg start_config_path)" />
+    <param name="launch_args" value="$(arg launch_args)" />
+    <param name="home_args" value="$(arg home_args)" />
+    <param name="require_ready" value="$(arg require_ready)" />
+    <!-- Start is blocked only when a feature is outside the training [min, max] widened by
+         these margins; smaller misses (e.g. an imprecise start pose) are shown as notes. -->
+    <param name="ood_margin" value="0.05" />
+    <rosparam param="ood_margins">
+      joint_pos_rel: 0.15      # rad
+      joint_vel: 0.3           # rad/s
+      joint_target_rel: 0.15   # rad
+      jaw_to_object_b: 0.03    # m
+      object_yaw_to_jaw: 0.2
+      object_to_goal_b: 0.03   # m
+    </rosparam>
+  </node>
+</launch>

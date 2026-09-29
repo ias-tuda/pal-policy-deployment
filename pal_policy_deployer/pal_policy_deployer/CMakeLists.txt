@@ -28,12 +28,14 @@ include_directories(${catkin_INCLUDE_DIRS})
 
 catkin_install_python(PROGRAMS
   scripts/velocity_command.py
+  scripts/measure_jaw_speed.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 # Keep this script's Python 3 shebang on ROS Melodic (catkin uses Python 2 here).
 install(PROGRAMS scripts/move_to_start_config.py scripts/spawn_grasp_controller.py
-  scripts/check_start_distribution.py scripts/joint_state_to_trajectory.py
+  scripts/check_start_distribution.py scripts/joint_state_to_trajectory.py scripts/move_and_deploy.sh
+  scripts/policy_supervisor.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 foreach(dir config launch models)

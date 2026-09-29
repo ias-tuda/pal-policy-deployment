@@ -12,6 +12,7 @@ ROS packages to run mjlab RL policies on PAL's Kangaroo robot, in simulation and
 | [`subscriber_controller`](subscriber_controller/README.md) | 2 kHz ROS controller that sends the received commands to the motors. |
 | [`kangaroo-pal-physics-simulator`](kangaroo-pal-physics-simulator/README.md) | PAL Physics Simulator for Kangaroo. Test here before using the real robot. |
 | [`kangaroo_camera_calibration`](kangaroo_camera_calibration/README.md) | Calibrates the torso/waist camera poses with a ChArUco board on the left arm. |
+| [`policy_web_control`](policy_web_control/README.md) | Phone-friendly web page to start, stop and home a grasp policy. |
 
 ## How the grasp pipeline fits together
 

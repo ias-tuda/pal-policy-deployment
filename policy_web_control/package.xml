@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>policy_web_control</name>
+  <version>0.1.0</version>
+  <description>Phone-friendly web page to start, stop and home a grasp policy through pal_policy_deployer's policy_supervisor</description>
+  <maintainer email="privat@claudiuskienle.de">Claudius Kienle</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+</package>

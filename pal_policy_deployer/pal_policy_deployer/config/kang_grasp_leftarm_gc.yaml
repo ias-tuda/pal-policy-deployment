@@ -1,11 +1,13 @@
-model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-28_15-29-35_grasp-leftarm-gc-armv36-slow50-notable-minobs-scratch_s123/model_500.onnx
+model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123/2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123.onnx
 
-# Model contract of grasp-leftarm-gc-armv36-slow50-notable-minobs: left arm and left jaw only,
-# trained with gravity compensation, minimal observations (23). Order matters.
+# Model contract of grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean: left arm and left jaw only,
+# trained with gravity compensation, jaw-relative object observations (38). Order matters.
 joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
               gripper_left_finger_joint]
 arm_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
-observation_terms: [joint_pos_rel, joint_target_rel, object_pos_b, object_yaw_b, goal_pos_b]
+# joint_vel covers the arm only; last_action is the raw, unclipped policy output.
+joint_vel_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_yaw_to_jaw, object_to_goal_b]
 action_dim: 8
 
 # DeltaJointPositionAction on actions[0:7]; action_scale is read from params/env.yaml.
@@ -31,12 +33,21 @@ robot_description: robot_description
 base_link: base_link
 tip_link: arm_left_7_link
 tcp_offset: [0.0, 0.0, 0.148]
+# Midpoint of gripper_left_fingertip_{left,right}_site in arm_left_7_link, measured in MJLab;
+# z moves with the jaw aperture. The closing axis is arm_left_7_link +x.
+jaw_joint: gripper_left_finger_joint
+jaw_mid_xy: [0.0, 0.0073]
+jaw_mid_q: [0.0475, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.9025]
+jaw_mid_z: [0.1755, 0.1794, 0.1826, 0.1853, 0.1875, 0.1891, 0.1902, 0.1905, 0.1905, 0.1903]
 joint_state_topic: /joint_states
 action_topic: /pal_policy/raw_actions
 policy_rate: 50.0
 state_timeout: 0.1
 
-# Temporary fixed observations, expressed in the robot base frame; the training start means.
-mock_object_position_b: [0.500, 0.109, -0.057]
-mock_object_yaw_b: 0.0
+# Object pose from TF in base_link. The goal is a constant in base_link (training samples
+# x [0.45, 0.55], y [0.04, 0.18], z [0.055, 0.115] once per episode).
+object_frame: cube_1
+object_timeout: 0.5
+# mock_object_position_b: [0.500, 0.109, -0.057]
+# mock_object_yaw_b: 0.0
 goal_position_b: [0.499, 0.111, 0.085]

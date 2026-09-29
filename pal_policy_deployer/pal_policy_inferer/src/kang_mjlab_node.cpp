@@ -226,6 +226,14 @@ std::vector<float> grasp_last_action;
 std::vector<double> grasp_object_b;
 std::vector<double> grasp_goal_b;
 double grasp_object_yaw_b = 0.0;
+// Jaw point (midpoint of the fingertip sites) in the first tip link frame, for jaw_to_object_b
+// and object_yaw_to_jaw: (jaw_mid_xy, z) with z interpolated in jaw_mid_z over jaw_mid_q of
+// jaw_joint. The jaw closing axis is the tip link's +x.
+std::string grasp_jaw_joint;
+size_t grasp_jaw_index = 0;
+std::vector<double> grasp_jaw_mid_xy;
+std::vector<double> grasp_jaw_mid_q;
+std::vector<double> grasp_jaw_mid_z;
 // Tracked object TF frame; empty keeps the fixed mock_object_* values.
 std::string grasp_object_frame;
 std::string grasp_base_link = "base_link";
@@ -250,8 +258,10 @@ int graspTermDim(const std::string& term)
     if (term == "last_action") return grasp_last_action.size();
     if (term == "joint_target_rel") return grasp_delta_actions ? grasp_action_joint_names.size() : -1;
     if (term == "tcp_pos_b") return 3 * grasp_tip_links.size();
-    if (term == "object_pos_b" || term == "goal_pos_b") return 3;
+    if (term == "object_pos_b" || term == "goal_pos_b" || term == "object_to_goal_b") return 3;
+    if (term == "jaw_to_object_b") return grasp_jaw_joint.empty() ? -1 : 3;
     if (term == "object_yaw_b") return 2;
+    if (term == "object_yaw_to_jaw") return grasp_jaw_joint.empty() ? -1 : 2;
     if (term == "tcp_quat_b") return 4 * grasp_tip_links.size();
     return -1;
 }
@@ -886,13 +896,32 @@ void graspJointStateCb(const sensor_msgs::JointState::ConstPtr& msg)
 
 bool buildGraspObservation(std::vector<float>& obs)
 {
-    std::vector<KDL::Frame> tcp_frames;
+    std::vector<KDL::Frame> tip_frames, tcp_frames;
     for (const auto& tcp : grasp_tcps) {
         KDL::JntArray q(tcp.q_indices.size());
         for (size_t j = 0; j < tcp.q_indices.size(); ++j) q(j) = grasp_chain_q[tcp.q_indices[j]];
         KDL::Frame tip;
         if (tcp.fk->JntToCart(q, tip) < 0) return false;
+        tip_frames.push_back(tip);
         tcp_frames.push_back(tip * KDL::Frame(grasp_tcp_offset));
+    }
+    KDL::Vector jaw_mid;
+    double jaw_axis_yaw = 0.0;
+    if (!grasp_jaw_joint.empty()) {
+        // The fingertip pads slide along the tip link's z as the jaw closes; clamp at the table ends.
+        const double q = grasp_position[grasp_jaw_index];
+        const auto& qs = grasp_jaw_mid_q;
+        const auto& zs = grasp_jaw_mid_z;
+        double z = q <= qs.front() ? zs.front() : zs.back();
+        for (size_t i = 1; i < qs.size(); ++i) {
+            if (q >= qs[i - 1] && q <= qs[i]) {
+                z = zs[i - 1] + (zs[i] - zs[i - 1]) * (q - qs[i - 1]) / (qs[i] - qs[i - 1]);
+                break;
+            }
+        }
+        jaw_mid = tip_frames[0] * KDL::Vector(grasp_jaw_mid_xy[0], grasp_jaw_mid_xy[1], z);
+        const KDL::Vector axis = tip_frames[0].M * KDL::Vector(1.0, 0.0, 0.0);
+        jaw_axis_yaw = std::atan2(axis.y(), axis.x());
     }
     obs.clear();
     obs.reserve(config.obs_dim);
@@ -920,6 +949,16 @@ bool buildGraspObservation(std::vector<float>& obs)
                                    static_cast<float>(std::sin(grasp_object_yaw_b))});
         } else if (term == "goal_pos_b") {
             for (double value : grasp_goal_b) obs.push_back(static_cast<float>(value));
+        } else if (term == "jaw_to_object_b") {
+            // Object minus jaw midpoint.
+            for (size_t k = 0; k < 3; ++k) obs.push_back(static_cast<float>(grasp_object_b[k] - jaw_mid(k)));
+        } else if (term == "object_yaw_to_jaw") {
+            // Cosine first; the factor 4 folds the cube's 90 degree symmetry.
+            const double d = 4.0 * (grasp_object_yaw_b - jaw_axis_yaw);
+            obs.insert(obs.end(), {static_cast<float>(std::cos(d)), static_cast<float>(std::sin(d))});
+        } else if (term == "object_to_goal_b") {
+            // Goal minus object.
+            for (size_t k = 0; k < 3; ++k) obs.push_back(static_cast<float>(grasp_goal_b[k] - grasp_object_b[k]));
         } else if (term == "tcp_quat_b") {
             for (const auto& tcp : tcp_frames) {
                 double x, y, z, w;
@@ -1305,6 +1344,29 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     }
     if (grasp_tip_links.empty()) { ROS_ERROR("tip_links must name at least one link"); return false; }
     if (!loadGraspDeltaActionConfig(nh, model_path)) return false;
+    grasp_jaw_joint.clear();
+    if (nh.getParam("jaw_joint", grasp_jaw_joint)) {
+        const auto it = std::find(grasp_joint_names.begin(), grasp_joint_names.end(), grasp_jaw_joint);
+        if (it == grasp_joint_names.end()) {
+            ROS_ERROR("jaw_joint %s is missing from joint_names", grasp_jaw_joint.c_str());
+            return false;
+        }
+        grasp_jaw_index = static_cast<size_t>(it - grasp_joint_names.begin());
+        const auto finite = [](const std::vector<double>& v) {
+            return std::all_of(v.begin(), v.end(), [](double x) { return std::isfinite(x); });
+        };
+        bool ok = nh.getParam("jaw_mid_xy", grasp_jaw_mid_xy) && grasp_jaw_mid_xy.size() == 2 &&
+                  nh.getParam("jaw_mid_q", grasp_jaw_mid_q) && !grasp_jaw_mid_q.empty() &&
+                  nh.getParam("jaw_mid_z", grasp_jaw_mid_z) &&
+                  grasp_jaw_mid_z.size() == grasp_jaw_mid_q.size() &&
+                  finite(grasp_jaw_mid_xy) && finite(grasp_jaw_mid_q) && finite(grasp_jaw_mid_z);
+        for (size_t i = 1; ok && i < grasp_jaw_mid_q.size(); ++i) ok = grasp_jaw_mid_q[i] > grasp_jaw_mid_q[i - 1];
+        if (!ok) {
+            ROS_ERROR("jaw_joint needs jaw_mid_xy (2 values) and finite jaw_mid_q (increasing) and "
+                      "jaw_mid_z of equal length");
+            return false;
+        }
+    }
     config.obs_dim = 0;
     for (const auto& term : grasp_observation_terms) {
         const int dim = graspTermDim(term);
