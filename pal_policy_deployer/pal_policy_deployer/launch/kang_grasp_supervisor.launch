@@ -29,5 +29,13 @@
       object_yaw_to_jaw: 0.2
       object_to_goal_b: 0.03   # m
     </rosparam>
+    <!-- While the policy runs, stop it when the object pose (relative to the fixed goal) leaves
+         the box of the training start range and the goal, widened by this margin, for this
+         many frames, or when no observation (stale joint state or object TF) arrives. -->
+    <rosparam param="running_ood_terms">[object_to_goal_b]</rosparam>
+    <param name="running_ood_margin" value="0.05" />  <!-- m -->
+    <param name="running_ood_frames" value="3" />
+    <param name="running_timeout" value="1.0" />      <!-- s -->
+    <param name="startup_timeout" value="20.0" />     <!-- s -->
   </node>
 </launch>

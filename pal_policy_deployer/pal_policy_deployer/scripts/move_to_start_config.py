@@ -177,9 +177,12 @@ def move():
         blend_speed = 6.0 * u * (1.0 - u) / duration
         expected = {name: start[name] + blend * (targets[name] - start[name])
                     for name in joint_names}
-        positions = {name: start[name] + blend * (commanded[name] - start[name])
+        # The jaws get their goal directly; their own position loop does the motion.
+        positions = {name: commanded[name] if name in unverified else
+                     start[name] + blend * (commanded[name] - start[name])
                      for name in joint_names}
-        velocities = {name: blend_speed * (commanded[name] - start[name])
+        velocities = {name: 0.0 if name in unverified else
+                      blend_speed * (commanded[name] - start[name])
                       for name in joint_names}
         actual, _ = measured.read(joint_names, state_timeout)
         worst_joint = max(verified_names, key=lambda name: abs(expected[name] - actual[name]))

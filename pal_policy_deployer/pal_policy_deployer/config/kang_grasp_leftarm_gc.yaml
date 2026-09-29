@@ -1,4 +1,4 @@
-model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123/2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123.onnx
+model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_14-06-28_grasp-la-gc-v36-s50-nt-smooth-wide-pat-lean-jawlag-ftvyq9vrpy_s123/model_5100.onnx
 
 # Model contract of grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean: left arm and left jaw only,
 # trained with gravity compensation, jaw-relative object observations (38). Order matters.

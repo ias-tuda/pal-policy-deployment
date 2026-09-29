@@ -265,6 +265,17 @@ last 0.5 s of observations lie inside the training `[min, max]` widened by the `
 serious misses block the start; features outside the strict step 3 range are listed as notes.
 The result is published as JSON on `~readiness` (latched, 2 Hz). Pass `require_ready:=false`
 to start regardless.
+
+While the policy runs, the supervisor stops it (the policy does not resume by itself) when the
+object pose leaves the training range or the inputs stop:
+
+- `object_to_goal_b` lies for 3 consecutive frames outside the box spanned by the training start
+  range and 0 (object at the goal), widened by 5 cm. The object may move anywhere between its
+  start positions and the goal.
+- No observation arrives for 1 s. The inferer skips steps while the joint state or the object TF
+  is stale, and would otherwise continue once they return.
+
+The reason is written to `~log`. The limits are parameters in `kang_grasp_supervisor.launch`.
 The node publishes `idle`, `policy` or `home` on `~state` (latched) and each output line of the
 jobs on `~log`. Without `start_config_path:=`, it uses `deployment_start_config.json` beside
 the profile's `model_path`. Pass extra deployer args with `launch_args:="..."` and extra

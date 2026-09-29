@@ -16,6 +16,14 @@ when a fresh observation is inside the training start distribution widened by ~o
 (per profile term, else ~ood_margin): only serious out-of-distribution inputs block the start.
 Features outside the strict check_start_distribution.py range are listed as notes.
 
+While the policy runs, the supervisor stops it (it does not resume) when
+  - an observation of ~running_ood_terms (default object_to_goal_b, the object pose relative to
+    the fixed goal) lies for ~running_ood_frames consecutive frames outside the box spanned by
+    the training start range and 0 (object at the goal), widened by ~running_ood_margin, or
+  - no observation arrives for ~running_timeout s (the inferer skips steps while the joint
+    state or the object TF is stale), or none within ~startup_timeout s of the start, or
+  - the object TF stamps are off this host's clock (ObjectStampCheck), which also blocks the start.
+
 The grasp controllers must already be running. The jobs inherit this node's environment.
 """
 import collections
@@ -31,6 +39,7 @@ import rospy
 import yaml
 from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import Trigger, TriggerResponse
+from tf2_msgs.msg import TFMessage
 
 from check_start_distribution import check_observation, load_distribution
 
@@ -124,12 +133,124 @@ class Readiness(object):
         return not reasons, reasons, notes
 
 
+class RunGuard(object):
+    """Calls on_trip once when the running policy's object pose leaves the training range or
+    its observations stop."""
+
+    def __init__(self, terms, distribution, topic, ood_terms, margin, frames, timeout, startup_timeout):
+        self._bounds = []  # (label, index, low, high)
+        offset = 0
+        for term, (_, stats) in zip(terms, distribution):
+            dim = len(stats["mean"])
+            for i in range(dim):
+                if term in ood_terms:
+                    label = "{} {}".format(term, "xyz"[i] if dim == 3 else i)
+                    # From anywhere in the start range the object may move to the goal (0).
+                    self._bounds.append((label, offset + i, min(stats["min"][i], 0.0) - margin,
+                                         max(stats["max"][i], 0.0) + margin))
+            offset += len(stats["mean"])
+        missing = set(ood_terms) - set(terms)
+        if missing:
+            raise ValueError("~running_ood_terms not in the profile: {}".format(", ".join(sorted(missing))))
+        self._frames = frames
+        self._timeout = timeout
+        self._startup_timeout = startup_timeout
+        self._lock = threading.Lock()
+        self._on_trip = None
+        rospy.Subscriber(topic, Float64MultiArray, self._callback, queue_size=10)
+
+    def arm(self, on_trip):
+        with self._lock:
+            self._on_trip = on_trip
+            self._started = time.monotonic()
+            self._last_observation = None
+            self._bad_frames = 0
+
+    def disarm(self):
+        with self._lock:
+            self._on_trip = None
+
+    def _trip_locked(self, reason):
+        on_trip, self._on_trip = self._on_trip, None
+        # Stopping blocks until roslaunch exits; keep it off the subscriber thread.
+        threading.Thread(target=on_trip, args=(reason,), daemon=True).start()
+
+    def _callback(self, msg):
+        with self._lock:
+            if self._on_trip is None:
+                return
+            self._last_observation = time.monotonic()
+            out = ["{}: {:.3f} outside [{:.3f}, {:.3f}]".format(label, msg.data[index], low, high)
+                   for label, index, low, high in self._bounds
+                   if index < len(msg.data) and not low <= msg.data[index] <= high]
+            self._bad_frames = self._bad_frames + 1 if out else 0
+            if self._bad_frames >= self._frames:
+                self._trip_locked("object out of range: " + "; ".join(out))
+
+    def check_stale(self, last_warning):
+        with self._lock:
+            if self._on_trip is None:
+                return
+            now = time.monotonic()
+            if self._last_observation is None:
+                if now - self._started > self._startup_timeout:
+                    self._trip_locked("no observation within {:.0f} s of the start{}".format(
+                        self._startup_timeout, last_warning))
+            elif now - self._last_observation > self._timeout:
+                self._trip_locked("no observation for {:.1f} s{}".format(
+                    now - self._last_observation, last_warning))
+
+    def trip(self, reason):
+        with self._lock:
+            if self._on_trip is not None:
+                self._trip_locked(reason)
+
+
+class ObjectStampCheck(object):
+    """Checks the object TF stamps against this host's clock. The inferer looks the object up
+    at the latest common TF time and measures its age from that, so a camera stamping ahead of
+    this host hands the policy a pose that old without tripping object_timeout."""
+
+    def __init__(self, frame, max_future, max_age, window):
+        self._frame = frame
+        self._max_future = max_future
+        self._max_age = max_age
+        self._ages = collections.deque(maxlen=window)
+        self._lock = threading.Lock()
+        rospy.Subscriber("/tf", TFMessage, self._callback, queue_size=100)
+
+    def _callback(self, msg):
+        now = rospy.Time.now()
+        for transform in msg.transforms:
+            if transform.child_frame_id == self._frame:
+                with self._lock:
+                    self._ages.append((time.monotonic(), (now - transform.header.stamp).to_sec()))
+
+    def problem(self):
+        """A reason when the recent stamps are off, else None; no recent stamps is left to the
+        observation timeouts."""
+        with self._lock:
+            ages = sorted(age for received, age in self._ages if time.monotonic() - received < 2.0)
+        if not ages:
+            return None
+        age = ages[len(ages) // 2]
+        if age < -self._max_future:
+            return "{} TF is stamped {:.2f} s in the future; resync the camera clock".format(
+                self._frame, -age)
+        if age > self._max_age:
+            return "{} TF arrives {:.2f} s after its stamp (limit {:.2f} s)".format(
+                self._frame, age, self._max_age)
+        return None
+
+
 class Supervisor(object):
     """Runs at most one job (policy or home move) and the observer while the policy is off."""
 
-    def __init__(self, commands, readiness, require_ready):
+    def __init__(self, commands, readiness, run_guard, stamp_check, require_ready):
         self._commands = commands
         self._readiness = readiness
+        self._run_guard = run_guard
+        self._stamp_check = stamp_check
         self._require_ready = require_ready
         self._lock = threading.Lock()
         self._job = None
@@ -165,7 +286,19 @@ class Supervisor(object):
         self._log("=== {} exited with code {} ===".format(job.name, code))
         with self._lock:
             if job is self._job:
+                self._run_guard.disarm()
                 self._state_pub.publish(String("idle"))
+
+    def _on_policy_line(self, line):
+        self._log(line)
+        self._readiness.on_observer_line(line)
+
+    def _abort(self, job, reason):
+        with self._lock:
+            if job is not self._job or not job.running():
+                return
+            self._log("=== stopping policy: {} ===".format(reason))
+            job.stop(self._log)
 
     def _on_observer_exit(self, job, code):
         self._log("observer exited with code {}".format(code))
@@ -174,10 +307,15 @@ class Supervisor(object):
 
     def _launch(self, name):
         self._log("=== {} ===".format(name))
-        self._job = Job(name, self._commands[name], self._log, self._on_exit)
+        job = Job(name, self._commands[name],
+                  self._on_policy_line if name == "policy" else self._log, self._on_exit)
+        self._job = job
+        if name == "policy":
+            self._run_guard.arm(lambda reason: self._abort(job, reason))
         self._state_pub.publish(String(name))
 
     def _stop_job_locked(self):
+        self._run_guard.disarm()
         if self._job_running():
             self._log("stopping {}".format(self._job.name))
             self._job.stop(self._log)
@@ -190,12 +328,24 @@ class Supervisor(object):
     def _evaluate_locked(self):
         if self._job_running():
             return False, ["{} running".format(self._job.name)], []
-        return self._readiness.evaluate()
+        ready, reasons, notes = self._readiness.evaluate()
+        problem = self._stamp_check.problem() if self._stamp_check else None
+        if problem:
+            ready, reasons = False, reasons + [problem]
+        return ready, reasons, notes
 
     def _loop(self):
+        count = 0
         while not rospy.is_shutdown():
-            self._tick()
-            time.sleep(0.5)
+            stamp, warning = self._readiness.last_warning
+            self._run_guard.check_stale(": " + warning if warning and time.monotonic() - stamp < 3.0 else "")
+            problem = self._stamp_check.problem() if self._stamp_check else None
+            if problem:
+                self._run_guard.trip(problem)
+            if count % 5 == 0:
+                self._tick()
+            count += 1
+            time.sleep(0.1)
 
     def _tick(self):
         with self._lock:
@@ -273,12 +423,29 @@ def main():
     for name, command in sorted(commands.items()):
         rospy.loginfo("%s: %s", name, command)
 
+    observation_topic = rospy.get_param(
+        "~observation_topic", profile.get("observation_topic", "/pal_policy/observation"))
     readiness = Readiness(
-        profile, distribution_path,
-        rospy.get_param("~observation_topic", profile.get("observation_topic", "/pal_policy/observation")),
+        profile, distribution_path, observation_topic,
         float(rospy.get_param("~observation_window", 0.5)),
         float(rospy.get_param("~ood_margin", 0.05)), rospy.get_param("~ood_margins", {}))
-    supervisor = Supervisor(commands, readiness, bool(rospy.get_param("~require_ready", True)))
+    run_guard = RunGuard(
+        profile["observation_terms"], load_distribution(distribution_path), observation_topic,
+        rospy.get_param("~running_ood_terms", ["object_to_goal_b"]),
+        float(rospy.get_param("~running_ood_margin", 0.05)),
+        int(rospy.get_param("~running_ood_frames", 3)),
+        float(rospy.get_param("~running_timeout", 1.0)),
+        float(rospy.get_param("~startup_timeout", 20.0)))
+    # Median of the recent object TF stamp ages (receipt minus stamp) must lie in
+    # [-~object_stamp_max_future, ~object_stamp_max_age]; mock objects have no TF to check.
+    stamp_check = None
+    if profile.get("object_frame"):
+        stamp_check = ObjectStampCheck(
+            profile["object_frame"], float(rospy.get_param("~object_stamp_max_future", 0.05)),
+            float(rospy.get_param("~object_stamp_max_age", 0.5)),
+            int(rospy.get_param("~object_stamp_window", 15)))
+    supervisor = Supervisor(commands, readiness, run_guard, stamp_check,
+                            bool(rospy.get_param("~require_ready", True)))
     rospy.on_shutdown(supervisor.shutdown)
     rospy.spin()
 
