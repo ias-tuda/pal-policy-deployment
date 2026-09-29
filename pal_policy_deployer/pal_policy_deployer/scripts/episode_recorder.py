@@ -29,11 +29,14 @@ the launch file, not on the page. oopsie-data counts a different instruction or 
 as a distinct task.
 
 The recorder also logs gaps in ~observation_topic (e.g. object tracking lost), because
-oopsie-data excludes episodes with missing frames unless the failure came first.
+oopsie-data excludes episodes with missing frames unless the failure came first. From the
+object_to_goal_b term of the same observation it tracks the object's distance to the goal
+(final, closest, and time within ~goal_threshold, 5 cm as in training) as a labelling aid.
 """
 import datetime
 import glob
 import json
+import math
 import os
 import re
 import shlex
@@ -49,6 +52,7 @@ import yaml
 from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import SetBool, SetBoolResponse
 
+from check_start_distribution import load_distribution
 from policy_supervisor import Job
 
 OUTCOMES = ["success", "success_suboptimal", "success_side_effect", "failure"]
@@ -79,6 +83,20 @@ def read_json(path):
         return None
 
 
+def goal_term_index(profile, distribution_path, term="object_to_goal_b"):
+    """Index of the 3 values of term in the observation, or None without that term."""
+    terms = profile.get("observation_terms", [])
+    if term not in terms:
+        return None
+    # The profile names the terms, the start distribution has their sizes (see RunGuard).
+    offset = 0
+    for name, (_, stats) in zip(terms, load_distribution(distribution_path)):
+        if name == term:
+            return offset
+        offset += len(stats["mean"])
+    return None
+
+
 def classify_stop(reason):
     """The kind of a supervisor stop reason, see RunGuard and ObjectStampCheck."""
     if reason.startswith("no observation"):
@@ -92,7 +110,8 @@ def classify_stop(reason):
 
 class Recorder(object):
     def __init__(self, root, supervisor, profile_path, topics, instruction, scene, operator,
-                 observation_topic, gap_threshold, max_duration, calibration_camera):
+                 observation_topic, gap_threshold, max_duration, calibration_camera,
+                 goal_index, goal_threshold):
         self._root = root
         self._profile_path = profile_path
         with open(profile_path) as stream:
@@ -105,6 +124,8 @@ class Recorder(object):
         self._gap_threshold = gap_threshold
         self._max_duration = max_duration
         self._calibration_camera = calibration_camera
+        self._goal_index = goal_index
+        self._goal_threshold = goal_threshold
         self._lock = threading.RLock()
         self._enabled = bool(rospy.get_param("~enabled", False))
         self._state = None
@@ -144,13 +165,14 @@ class Recorder(object):
                 if episode is not None and episode["stop_line"] is None:
                     episode["stop_line"] = line
 
-    def _on_observation(self, _):
+    def _on_observation(self, msg):
         now = time.monotonic()
         with self._lock:
             episode = self._current
             if episode is None:
                 return
             last = episode["last_observation"]
+            self._track_goal(episode, msg.data, now, last)
             if last is None:
                 episode["meta"]["first_observation_s"] = round(now - episode["start"], 3)
                 # The policy's topics exist from now on.
@@ -159,6 +181,21 @@ class Recorder(object):
                 episode["meta"]["observation_gaps"].append(
                     {"start_s": round(last - episode["start"], 3), "length_s": round(now - last, 3)})
             episode["last_observation"] = now
+
+    def _track_goal(self, episode, data, now, last):
+        index = self._goal_index
+        if index is None or len(data) < index + 3:
+            return
+        distance = math.sqrt(sum(value * value for value in data[index:index + 3]))
+        goal = episode["goal"]
+        if goal is None:
+            episode["goal"] = {"threshold_m": self._goal_threshold, "final_m": distance,
+                               "min_m": distance, "within_s": 0.0}
+            return
+        if goal["final_m"] < self._goal_threshold and distance < self._goal_threshold:
+            goal["within_s"] += now - last
+        goal["final_m"] = distance
+        goal["min_m"] = min(goal["min_m"], distance)
 
     def _on_state(self, msg):
         with self._lock:
@@ -207,7 +244,8 @@ class Recorder(object):
             " ".join(shlex.quote(topic) for topic in self._topics))
         job = Job("rosbag", command, self._on_bag_line, lambda job, code: None)
         self._current = {"job": job, "dir": directory, "meta": meta, "start": time.monotonic(),
-                         "last_observation": None, "truncated": False, "stop_line": None}
+                         "last_observation": None, "truncated": False, "stop_line": None,
+                         "goal": None}
         self._say("recording episode " + episode_id)
         threading.Thread(target=self._save_context, args=(directory, model_path), daemon=True).start()
 
@@ -280,6 +318,8 @@ class Recorder(object):
             # Gaps the policy recovered from; a trailing gap before the stop is separate.
             meta["has_gaps"] = bool(meta["observation_gaps"])
             meta["too_short"] = meta["duration_s"] < 1.0
+            goal = episode["goal"]
+            meta["goal_distance"] = goal and {key: round(value, 4) for key, value in goal.items()}
             write_json(os.path.join(episode["dir"], "meta.json"), meta)
             self._latest = {"dir": episode["dir"], "meta": meta, "label": None}
             self._say("episode {} done ({:.1f} s): {}".format(
@@ -411,12 +451,14 @@ class Recorder(object):
                 episode = {"id": meta["episode_id"], "recording": True,
                            "elapsed_s": round(time.monotonic() - self._current["start"], 1),
                            "gaps": len(meta["observation_gaps"]),
-                           "missing_topics": meta["missing_topics"]}
+                           "missing_topics": meta["missing_topics"],
+                           "goal_distance": self._current["goal"] and dict(self._current["goal"])}
             elif self._latest is not None:
                 meta = self._latest["meta"]
                 episode = {key: meta.get(key) for key in (
                     "stop_reason", "stop_reason_kind", "duration_s", "has_gaps", "trailing_gap_s",
-                    "too_short", "truncated", "missing_topics", "language_instruction", "scene")}
+                    "too_short", "truncated", "missing_topics", "language_instruction", "scene",
+                    "goal_distance")}
                 episode.update({"id": meta["episode_id"], "recording": False,
                                 "gaps": len(meta["observation_gaps"]),
                                 "label": self._latest["label"]})
@@ -446,6 +488,14 @@ def main():
     with open(profile_path) as stream:
         profile = yaml.safe_load(stream)
     policy_rate = float(profile.get("policy_rate", 50.0))
+    # The same start distribution as policy_supervisor's.
+    distribution_path = (rospy.get_param("~distribution_path", "") or os.path.join(
+        os.path.dirname(profile["model_path"]), "start_observation_distribution.json"))
+    goal_index = None
+    try:
+        goal_index = goal_term_index(profile, distribution_path)
+    except (IOError, OSError, ValueError, KeyError) as error:
+        rospy.logwarn("no goal distance: %s", error)
     recorder = Recorder(
         root, rospy.get_param("~supervisor", "/pal_policy_supervisor"), profile_path,
         rospy.get_param("~topics", DEFAULT_TOPICS),
@@ -456,7 +506,8 @@ def main():
         # A gap is a pause of more than this many policy periods.
         float(rospy.get_param("~gap_periods", 3)) / policy_rate,
         float(rospy.get_param("~max_duration", 600.0)),
-        rospy.get_param("~calibration_camera", "torso_front"))
+        rospy.get_param("~calibration_camera", "torso_front"),
+        goal_index, float(rospy.get_param("~goal_threshold", 0.05)))
     rospy.on_shutdown(recorder.shutdown)
     rospy.spin()
 

@@ -49,7 +49,7 @@ pre{background:#000;padding:8px;font-size:11px;height:40vh;overflow:auto;white-s
 font-weight:500;background:#333;border-radius:8px}
 .row button.on{background:#1f5fbf}.row .ok.on{background:#1a7f37}.row .bad.on{background:#c62828}
 #recbtn{padding:14px;font-size:1.1em;background:#444}#recbtn.on{background:#c62828}
-.warn{color:#f5b041}.muted{color:#aaa;font-size:.9em}.reason{font-weight:700}
+.warn{color:#f5b041}.good{color:#4cc46a}.muted{color:#aaa;font-size:.9em}.reason{font-weight:700}
 .save{background:#1a7f37!important;font-weight:700!important;padding:16px!important;margin:10px 0 6px!important}
 .row button small{display:block;font-size:.72em;font-weight:400;color:#ccc;margin-top:2px}
 .row button.tag{flex:0 1 auto;padding:10px 12px}
@@ -111,6 +111,13 @@ const EX_HINT={tracking_lost:'FoundationPose, not the policy',hardware:'not caus
   setup_error:'our config / scene',other:''};
 let recKey=null,labelKey=null,relabel=null,pick=null,paint=()=>{};
 function el(tag,text,cls){const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;}
+// The object's distance to the goal (episode_recorder.py), within threshold_m counts as reached.
+function goalText(g,live){
+  const cm=m=>(100*m).toFixed(1)+' cm';
+  if(live)return 'Cube to goal: '+cm(g.final_m)+' (closest '+cm(g.min_m)+')';
+  return 'Cube to goal: final '+cm(g.final_m)+', closest '+cm(g.min_m)+', '+g.within_s.toFixed(1)+' s within '+cm(g.threshold_m);
+}
+function goalClass(g){return g.final_m<g.threshold_m?'reason good':g.min_m<g.threshold_m?'reason warn':'reason';}
 function mmss(s){s=Math.floor(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
 async function post(path,body){
   try{const r=await fetch('/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -145,6 +152,7 @@ function renderLabel(rec){
   if(ep.recording){
     labelKey=null;box.innerHTML='';
     box.appendChild(el('b','\\u25cf Recording '+ep.id+'  '+mmss(ep.elapsed_s),'warn'));
+    if(ep.goal_distance)box.appendChild(el('div',goalText(ep.goal_distance,true),goalClass(ep.goal_distance)));
     if(ep.gaps)box.appendChild(el('div',ep.gaps+' observation gap(s) so far','warn'));
     if(ep.missing_topics.length)box.appendChild(el('div','not published: '+ep.missing_topics.join(', '),'warn'));
     return;
@@ -164,6 +172,12 @@ function renderLabel(rec){
   const done=body=>{relabel=null;post('label',Object.assign({episode:ep.id},body));};
   box.appendChild(el('b','Label episode '+ep.id+' ('+(ep.duration_s||0).toFixed(1)+' s)'));
   box.appendChild(el('div','Stopped: '+ep.stop_reason,'reason'+(ep.stop_reason_kind==='tracking_lost'?' warn':'')));
+  const g=ep.goal_distance;
+  if(g){
+    box.appendChild(el('div',goalText(g,false),goalClass(g)));
+    box.appendChild(el('div',g.final_m<g.threshold_m?'Ended at the goal (training counts this as success).':
+      g.min_m<g.threshold_m?'Reached the goal but left it again (dropped?).':'Never within '+(100*g.threshold_m).toFixed(0)+' cm of the goal.','muted'));
+  }
   if(ep.stop_reason_kind==='tracking_lost')box.appendChild(el('div','Tracking lost. Caused by the policy (cube knocked away, hidden by the arm)? Then label a failure. Otherwise: Exclude, tracking lost.','muted'));
   if(ep.has_gaps)box.appendChild(el('div',ep.gaps+' observation gap(s) during the run (missing frames)','warn'));
   if(ep.too_short)box.appendChild(el('div','shorter than 1 s: oopsie-data rejects it','warn'));

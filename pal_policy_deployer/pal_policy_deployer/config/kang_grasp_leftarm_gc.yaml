@@ -1,4 +1,4 @@
-model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_17-52-16_grasp-la-gc-v36-s25-nt-wide-pat-drop-lean-track-scratch_s123/model_200.onnx
+model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_17-52-16_grasp-la-gc-v36-s25-nt-wide-pat-drop-lean-track-scratch_s123/model_300.onnx
 
 # Model contract of grasp-la-gc-v36-s25-nt-wide-pat-drop-lean-track: left arm and left jaw only,
 # trained with gravity compensation, jaw-relative object observations (38). Order matters.
@@ -47,10 +47,10 @@ state_timeout: 0.1
 # Object pose from TF in base_link. While the TF is stale the inferer keeps the last pose and
 # recomputes the jaw-relative terms, which the policy saw in training as observation dropout
 # (p=0.01 per step, 5-50 steps, on top of a 5-8 step lag, so up to ~1.16 s old). Beyond
-# object_timeout the inferer skips steps and the supervisor stops the policy after running_timeout.
-# The goal is a constant in base_link (training samples x [0.45, 0.55], y [0.04, 0.18], z [0.055, 0.115] once per episode).
+# object_timeout the inferer skips steps and the supervisor stops the policy after running_timeout. The goal is a constant in base_link (training samples
+# x [0.45, 0.55], y [0.04, 0.18], z [0.055, 0.115] once per episode).
 object_frame: cube_1
-object_timeout: 1.0
+object_timeout: 2.0
 # mock_object_position_b: [0.500, 0.109, -0.057]
 # mock_object_yaw_b: 0.0
 goal_position_b: [0.499, 0.111, 0.085]
