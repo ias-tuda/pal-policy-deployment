@@ -15,13 +15,14 @@ model:
 
 # cube_1 is the cube that is grasped, cube_2 the cube it is stacked on. The policy sees
 # object_to_goal_b = goal - object, and in training the goal is the top of the base object
-# (goal_pose stack_on_top, offset 0) resampled per episode. The inferer only takes a constant
-# goal, so cube_2 must stay where it was when goal_position_b was measured.
+# (goal_pose stack_on_top, offset 0) resampled per episode. The inferer reads the cube_2 TF
+# position once (first fresh reading) and latches goal = cube_2 + goal_offset_b, so cube_2
+# must not move afterwards. goal_position_b is not used here.
 object_frame: cube_1
 base_object_frame: cube_2
-# TODO: set goal_position_b to the cube_2 top-centre in base_link (cube_2 TF position plus half
-# a cube height in z); the value below is the grasp-cube goal, kept as a placeholder.
-goal_position_b: [0.499, 0.111, 0.085]
+# TODO: set to the stacked height of cube_1's centre above cube_2's centre (one cube edge
+# length if both TF origins are at the cube centre); z = 0.0 is a placeholder.
+goal_offset_b: [0.0, 0.0, 0.05]
 object_timeout: 2.0
 
 supervisor:

@@ -236,6 +236,11 @@ std::vector<double> grasp_jaw_mid_q;
 std::vector<double> grasp_jaw_mid_z;
 // Tracked object TF frame; empty keeps the fixed mock_object_* values.
 std::string grasp_object_frame;
+// Optional base object (e.g. the cube to stack on): its TF position, read once, plus
+// goal_offset_b is the goal. Empty keeps the constant goal_position_b.
+std::string grasp_base_object_frame;
+std::vector<double> grasp_goal_offset_b;
+bool grasp_goal_latched = false;
 std::string grasp_base_link = "base_link";
 double grasp_object_timeout = 0.5;
 std::unique_ptr<tf2_ros::Buffer> grasp_tf_buffer;
@@ -1014,6 +1019,31 @@ void publishGraspTarget()
     if (grasp_publish_commands) grasp_command_pub.publish(cmd);
 }
 
+bool updateGraspGoal()
+{
+    if (grasp_base_object_frame.empty() || grasp_goal_latched) return true;
+    geometry_msgs::TransformStamped tf;
+    try {
+        tf = grasp_tf_buffer->lookupTransform(grasp_base_link, grasp_base_object_frame, ros::Time(0));
+    } catch (const tf2::TransformException& e) {
+        ROS_WARN_THROTTLE(1.0, "Grasp policy waiting for base object TF %s -> %s: %s",
+                          grasp_base_link.c_str(), grasp_base_object_frame.c_str(), e.what());
+        return false;
+    }
+    const double age = (ros::Time::now() - tf.header.stamp).toSec();
+    const auto& t = tf.transform.translation;
+    if (age > grasp_object_timeout || !std::isfinite(t.x) || !std::isfinite(t.y) || !std::isfinite(t.z)) {
+        ROS_WARN_THROTTLE(1.0, "Grasp policy waiting for a fresh base object TF %s (%.2f s old)",
+                          grasp_base_object_frame.c_str(), age);
+        return false;
+    }
+    grasp_goal_b = {t.x + grasp_goal_offset_b[0], t.y + grasp_goal_offset_b[1], t.z + grasp_goal_offset_b[2]};
+    grasp_goal_latched = true;
+    ROS_INFO("Grasp goal latched from %s: [%.3f, %.3f, %.3f] in %s", grasp_base_object_frame.c_str(),
+             grasp_goal_b[0], grasp_goal_b[1], grasp_goal_b[2], grasp_base_link.c_str());
+    return true;
+}
+
 bool updateGraspObject()
 {
     if (grasp_object_frame.empty()) return true;
@@ -1046,7 +1076,7 @@ void graspInferenceTimer(const ros::TimerEvent&)
 {
     std::lock_guard<std::mutex> lock(grasp_mutex);
     if (!grasp_state_received) return;
-    if (!updateGraspObject()) return;
+    if (!updateGraspGoal() || !updateGraspObject()) return;
     const double state_age = (ros::Time::now() - grasp_state_time).toSec();
     if (state_age < 0.0 || state_age > grasp_state_timeout) {
         ROS_WARN_THROTTLE(1.0, "Grasp policy stopped: joint state is stale");
@@ -1390,7 +1420,19 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
         }
         nh.param("mock_object_yaw_b", grasp_object_yaw_b, 0.0);
     }
-    if (!nh.getParam("goal_position_b", grasp_goal_b) || grasp_goal_b.size() != 3) {
+    nh.param<std::string>("base_object_frame", grasp_base_object_frame, "");
+    if (!grasp_base_object_frame.empty()) {
+        // Goal from the base object TF, read once; a constant goal would conflict with it.
+        if (grasp_object_frame.empty() || nh.hasParam("goal_position_b")) {
+            ROS_ERROR("base_object_frame needs object_frame and replaces goal_position_b");
+            return false;
+        }
+        if (!nh.getParam("goal_offset_b", grasp_goal_offset_b) || grasp_goal_offset_b.size() != 3) {
+            ROS_ERROR("Grasp config with base_object_frame requires a 3-value goal_offset_b");
+            return false;
+        }
+        grasp_goal_b.assign(3, std::numeric_limits<double>::quiet_NaN());
+    } else if (!nh.getParam("goal_position_b", grasp_goal_b) || grasp_goal_b.size() != 3) {
         ROS_ERROR("Grasp config requires a 3-value goal_position_b");
         return false;
     }
@@ -1427,7 +1469,10 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
         (grasp_object_frame.empty() &&
          !std::all_of(grasp_object_b.begin(), grasp_object_b.end(),
                       [](double v) { return std::isfinite(v); })) ||
-        !std::all_of(grasp_goal_b.begin(), grasp_goal_b.end(),
+        (grasp_base_object_frame.empty() &&
+         !std::all_of(grasp_goal_b.begin(), grasp_goal_b.end(),
+                      [](double v) { return std::isfinite(v); })) ||
+        !std::all_of(grasp_goal_offset_b.begin(), grasp_goal_offset_b.end(),
                      [](double v) { return std::isfinite(v); })) {
         ROS_ERROR("TCP offset, object position and goal position must be finite");
         return false;
