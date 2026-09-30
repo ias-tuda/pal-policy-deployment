@@ -241,6 +241,10 @@ std::string grasp_object_frame;
 std::string grasp_base_object_frame;
 std::vector<double> grasp_goal_offset_b;
 bool grasp_goal_latched = false;
+// Keep following the base object after the first reading; hold the last goal while its TF is
+// stale (e.g. occluded). grasp_base_object_alpha low-passes the followed goal (1 = none).
+bool grasp_track_base_object = false;
+double grasp_base_object_alpha = 1.0;
 std::string grasp_base_link = "base_link";
 double grasp_object_timeout = 0.5;
 std::unique_ptr<tf2_ros::Buffer> grasp_tf_buffer;
@@ -1023,24 +1027,32 @@ bool updateGraspGoal()
 {
     // Dry run follows the base object, so the start check sees where it is now; the policy
     // latches it once at its start.
-    if (grasp_base_object_frame.empty() || (grasp_goal_latched && !grasp_dry_run)) return true;
+    if (grasp_base_object_frame.empty()) return true;
+    const bool follow = grasp_dry_run || grasp_track_base_object;
+    if (grasp_goal_latched && !follow) return true;
     geometry_msgs::TransformStamped tf;
     try {
         tf = grasp_tf_buffer->lookupTransform(grasp_base_link, grasp_base_object_frame, ros::Time(0));
     } catch (const tf2::TransformException& e) {
         ROS_WARN_THROTTLE(1.0, "Grasp policy waiting for base object TF %s -> %s: %s",
                           grasp_base_link.c_str(), grasp_base_object_frame.c_str(), e.what());
-        return false;
+        return grasp_goal_latched && grasp_track_base_object && !grasp_dry_run;
     }
     const double age = (ros::Time::now() - tf.header.stamp).toSec();
     const auto& t = tf.transform.translation;
     if (age > grasp_object_timeout || !std::isfinite(t.x) || !std::isfinite(t.y) || !std::isfinite(t.z)) {
         ROS_WARN_THROTTLE(1.0, "Grasp policy waiting for a fresh base object TF %s (%.2f s old)",
                           grasp_base_object_frame.c_str(), age);
-        return false;
+        return grasp_goal_latched && grasp_track_base_object && !grasp_dry_run;
     }
-    grasp_goal_b = {t.x + grasp_goal_offset_b[0], t.y + grasp_goal_offset_b[1], t.z + grasp_goal_offset_b[2]};
-    if (grasp_goal_latched) return true;
+    const std::vector<double> goal = {t.x + grasp_goal_offset_b[0], t.y + grasp_goal_offset_b[1],
+                                      t.z + grasp_goal_offset_b[2]};
+    if (grasp_goal_latched) {
+        for (size_t k = 0; k < 3; ++k)
+            grasp_goal_b[k] += grasp_base_object_alpha * (goal[k] - grasp_goal_b[k]);
+        return true;
+    }
+    grasp_goal_b = goal;
     grasp_goal_latched = true;
     ROS_INFO("Grasp goal latched from %s: [%.3f, %.3f, %.3f] in %s", grasp_base_object_frame.c_str(),
              grasp_goal_b[0], grasp_goal_b[1], grasp_goal_b[2], grasp_base_link.c_str());
@@ -1432,6 +1444,13 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
         }
         if (!nh.getParam("goal_offset_b", grasp_goal_offset_b) || grasp_goal_offset_b.size() != 3) {
             ROS_ERROR("Grasp config with base_object_frame requires a 3-value goal_offset_b");
+            return false;
+        }
+        nh.param("track_base_object", grasp_track_base_object, false);
+        nh.param("base_object_alpha", grasp_base_object_alpha, 1.0);
+        if (!std::isfinite(grasp_base_object_alpha) || grasp_base_object_alpha <= 0.0 ||
+            grasp_base_object_alpha > 1.0) {
+            ROS_ERROR("base_object_alpha must be in (0, 1]");
             return false;
         }
         grasp_goal_b.assign(3, std::numeric_limits<double>::quiet_NaN());

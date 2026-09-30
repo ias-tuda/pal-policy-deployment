@@ -24,6 +24,8 @@ base_object_frame: cube_2
 # length if both TF origins are at the cube centre); z = 0.0 is a placeholder.
 goal_offset_b: [0.0, 0.0, 0.05]
 object_timeout: 2.0
+track_base_object: true
+base_object_alpha: 0.1   # low-pass on the followed goal per tick (1 = none)
 
 supervisor:
   ood_margin: 0.05
