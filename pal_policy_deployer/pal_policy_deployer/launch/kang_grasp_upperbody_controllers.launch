@@ -3,7 +3,9 @@
        direct_impedance_control with the training gains, both jaws under DirectPositionControl.
        The policy was trained without gravity feedforward, so no gravity bridge runs: the
        targets it sends carry the gravity load as PD error, as in simulation. -->
-  <arg name="profile" default="$(find pal_policy_deployer)/config/profiles/upperbody.yaml" />
+  <arg name="task" default="grasp-cube-upperbody" doc="Task file in config/tasks/, for its robot and model." />
+  <arg name="robot" default="" doc="Replaces the task's robot (a name in config/robots/ or a path)." />
+  <arg name="config" default="" doc="A deployment config file instead of task and robot." />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
     <arg name="local_joint_control_type" value="no_control" />
@@ -17,7 +19,7 @@
 
   <!-- Despite its name, direct_impedance_control is a joint PD computed in software and sent
        as effort: tau = K (q_des - q) + D (qd_des - qd) + tau_ff. spawn_grasp_controller.py
-       overwrites K and D with the env.yaml gains of the profile's impedance_joint_names. -->
+       overwrites K and D with the env.yaml gains of the robot's impedance_joint_names. -->
   <include file="$(find kangaroo_controller_configuration)/launch/local_joint_control/arm_left_7dof.launch">
     <arg name="local_joint_control_type" value="direct_impedance_control" />
     <arg name="local_joint_control_pkg" value="pal_local_joint_control" />
@@ -42,6 +44,8 @@
 
   <node pkg="pal_policy_deployer" type="spawn_grasp_controller.py"
         name="spawn_grasp_controller" output="screen" required="true">
-    <param name="profile" value="$(arg profile)" />
+    <param name="task" value="$(arg task)" />
+    <param name="robot" value="$(arg robot)" />
+    <param name="config" value="$(arg config)" />
   </node>
 </launch>

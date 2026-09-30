@@ -1,8 +1,8 @@
 <launch>
   <arg name="robot_description" default="robot_description" />
   <arg name="publish_commands" default="false" />
-  <arg name="joint_state_topic" default="" doc="Override the profile topic; empty uses the profile." />
-  <arg name="action_topic" default="" doc="Override the profile topic; empty uses the profile." />
+  <arg name="joint_state_topic" default="" doc="Override the topic of the config; empty uses the config." />
+  <arg name="action_topic" default="" doc="Override the topic of the config; empty uses the config." />
   <arg name="command_topic" default="/pal_grasp/desired_state_uncompensated" />
   <arg name="start_gravity_bridge" default="true" />
   <arg name="start_config_path" default="" />

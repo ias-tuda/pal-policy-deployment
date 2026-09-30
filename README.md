@@ -2,101 +2,96 @@
 
 ROS packages to run mjlab RL policies on PAL's Kangaroo robot, in simulation and on hardware.
 
+- [Packages](#packages)
+- [Setup](#setup)
+- [Run a grasp task on the robot](#run-a-grasp-task-on-the-robot)
+- [Run in simulation](#run-in-simulation)
+- [Troubleshooting](#troubleshooting)
+
 ## Packages
 
 | Package | What it does |
 | --- | --- |
-| [`pal_policy_deployer`](pal_policy_deployer/README.md) | Runs the ONNX policy (inferer, preprocessor, launch files). Start here. |
-| [`pal_training_ik`](pal_training_ik/README.md) | Turns the grasp policy's 7 raw actions into arm and gripper joint targets (500 Hz IK). |
-| [`pal_gravity_compensation`](pal_gravity_compensation/README.md) | Adds gravity feedforward torques to the arm commands. Not used with position control. |
-| [`subscriber_controller`](subscriber_controller/README.md) | 2 kHz ROS controller that sends the received commands to the motors. |
-| [`kangaroo-pal-physics-simulator`](kangaroo-pal-physics-simulator/README.md) | PAL Physics Simulator for Kangaroo. Test here before using the real robot. |
-| [`kangaroo_camera_calibration`](kangaroo_camera_calibration/README.md) | Calibrates the torso/waist camera poses with a ChArUco board on the left arm. |
-| [`policy_web_control`](policy_web_control/README.md) | Phone-friendly web page to start, stop and home a grasp policy. |
+| [`pal_policy_deployer`](pal_policy_deployer/README.md) | Runs the ONNX policy: inferer, robots and tasks, supervisor, recorder. **Start here.** |
+| [`policy_web_control`](policy_web_control/README.md) | Phone page to start, stop and home the policy and to label recorded episodes. |
+| [`pal_training_ik`](pal_training_ik/README.md) | IK for the older end-effector grasp policy (7 raw actions to joint targets). |
+| [`pal_gravity_compensation`](pal_gravity_compensation/README.md) | Adds gravity feedforward torque to the arm commands. |
+| [`subscriber_controller`](subscriber_controller/README.md) | 2 kHz controller that sends the received commands to the motors. |
+| [`kangaroo-pal-physics-simulator`](kangaroo-pal-physics-simulator/README.md) | PAL Physics Simulator. Test here before the real robot. |
+| [`kangaroo_camera_calibration`](kangaroo_camera_calibration/README.md) | Calibrates the torso camera poses with a ChArUco board. |
 
-## How the grasp pipeline fits together
+Data flow of the left-arm grasp policy:
 
 ```
-policy (pal_policy_deployer)
-   │  /pal_policy/raw_actions
-   ▼
-IK (pal_training_ik)
-   │  /pal_grasp/desired_state_uncompensated
-   ▼
-gravity compensation (pal_gravity_compensation)
-   │  /subscriber_controller/desired_state
-   ▼
-subscriber_controller  ──►  robot or simulator
+policy_supervisor ──► inferer (pal_policy_deployer)
+                         │ /pal_grasp/desired_state_uncompensated
+                         ▼
+                 pal_gravity_compensation
+                         │ /subscriber_controller/desired_state
+                         ▼
+                 subscriber_controller ──► robot or simulator
 ```
 
-With position control, `joint_state_to_trajectory.py` replaces the last two stages and
-forwards the IK targets to `left_arm_controller` and `gripper_left_controller`.
+The upper-body policy publishes straight to the controller (no gravity bridge). The older
+end-effector policy adds `pal_training_ik` between the inferer and the bridge.
 
-## Build
+## Setup
 
 ```bash
-cd /catkin_ws
-catkin_make
-source devel/setup.bash
+cd /catkin_ws && catkin_make && source devel/setup.bash
 ```
 
-## ONNX
-```
+ONNX Runtime 1.17.0 (once per machine):
+
+```bash
 cd /tmp
 wget https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-1.17.0.tgz
-tar xzf onnxruntime-linux-x64-1.17.0.tgz
-sudo mv onnxruntime-linux-x64-1.17.0 /opt/onnxruntime
-
-# so the nodes can find libonnxruntime.so when they run
-echo /opt/onnxruntime/lib | sudo tee /etc/ld.so.conf.d/onnxruntime.conf
-sudo ldconfig
+tar xzf onnxruntime-linux-x64-1.17.0.tgz && sudo mv onnxruntime-linux-x64-1.17.0 /opt/onnxruntime
+echo /opt/onnxruntime/lib | sudo tee /etc/ld.so.conf.d/onnxruntime.conf && sudo ldconfig
 ```
 
-## Quick start: grasp policy
+## Run a grasp task on the robot
 
-1. Simulation only, start the simulator (never against the robot's master):
-   ```bash
-   roslaunch kangaroo_pal_physics_simulator kangaroo_pal_physics_simulator.launch
-   ```
-2. Start the controllers and move the left arm to the start pose:
-   ```bash
-   roslaunch pal_policy_deployer kang_grasp_controllers.launch
-   rosrun pal_policy_deployer move_to_start_config.py _start_config_path:=<path/to/deployment_start_config.json>
-   # position control (motor position loops instead of the software PD; stop subscriber_controller first):
-   roslaunch pal_policy_deployer kang_grasp_position_controllers.launch
-   rosrun pal_policy_deployer move_to_start_config.py _start_config_path:=<path/to/deployment_start_config.json> _state_topic:=/joint_states
-   ```
-   If the move fails with "other publishers on /pal_grasp/desired_state_uncompensated", a
-   stopped policy left stale nodes; remove them with `rosnode cleanup`.
-3. Check that the robot's first observation matches the training data:
-   ```bash
-   roslaunch pal_policy_deployer kang_grasp_check_start.launch
-   # simulation:
-   roslaunch pal_policy_deployer kang_grasp_check_start.launch joint_state_topic:=/simulator/joint_states
-   ```
-4. Run the policy and send its commands to the robot:
-   ```bash
-   roslaunch pal_policy_deployer kang_grasp_deployer.launch start_controllers:=false
-   # simulation:
-   roslaunch pal_policy_deployer kang_grasp_deployer.launch start_controllers:=false joint_state_topic:=/simulator/joint_states
-   ```
+A *task* (`pal_policy_deployer/config/tasks/`) picks a *robot* (the robot part and how it is
+driven), the model, the instruction and the scene. Its name is also the recording folder. See
+[Robots and tasks](pal_policy_deployer/README.md#robots-and-tasks).
 
-To try it without moving the robot, pass `publish_commands:=false`. You can then watch the
-outputs on `/pal_policy/raw_actions` and `/pal_training_ik/desired_state`.
+| Where | Step |
+| --- | --- |
+| Robot | 1. Start the default controller and run `full_homing`. |
+| Robot | 2. On the 5m PC: reset `ntpd` (should not be required anymore - only if the supervisor complains about clocks being off). |
+| Robot | 3. Kill the default controller. |
+| Robot | 4. Start the web page: `rosrun policy_web_control policy_web_control.py` |
+| Tracker repo | 5. Start the FoundationPose tracker (publishes the `cube_1` TF). |
+| Dev container | 6. `roslaunch pal_policy_deployer kang_grasp_controllers.launch task:=grasp-cube` |
+| Dev container | 7. `roslaunch pal_policy_deployer kang_grasp_supervisor.launch task:=grasp-cube` |
+| Dev container | 8. Start RViz. |
+| Phone | 9. Open `http://<control PC IP>:8000`: **Go home**, turn recording on, **Start policy**, label the episode. |
 
-For locomotion, model setup and all options, see the
-[`pal_policy_deployer` README](pal_policy_deployer/README.md).
+Another task: change `task:=` in steps 6 and 7 (for example `grasp-cube-upperbody`).
+Episodes are saved under `/catkin_ws/ias-nas/home/oopsie-data/<task>/<date>/<episode_id>/`.
+
+## Run in simulation
+
+```bash
+roslaunch kangaroo_pal_physics_simulator kangaroo_pal_physics_simulator.launch   # never against the robot's master
+roslaunch pal_policy_deployer kang_grasp_controllers.launch task:=grasp-cube
+roslaunch pal_policy_deployer kang_grasp_supervisor.launch task:=grasp-cube
+```
+
+The simulator's joint states are on `/simulator/joint_states`. The robot files use `/joint_states`,
+so launch files that run the inferer take `joint_state_topic:=/simulator/joint_states`.
+
+## Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| Move fails with "other publishers on /pal_grasp/desired_state_uncompensated" | A stopped policy left stale nodes: `rosnode cleanup`. |
+| An old subscriber controller is still loaded | `rosrun controller_manager controller_manager stop subscriber_controller && rosrun controller_manager controller_manager unload subscriber_controller` |
+| Start is disabled on the page | The page lists why (object not tracked, joints out of the training range). `require_ready:=false` on the supervisor launch skips the check. |
 
 ## Repository history
 
-This repository combines several repos, and each one keeps its full git history.
-`kangaroo-pal-physics-simulator`, `pal_policy_deployer` and `subscriber_controller`
-came from separate repos under `humanoids-lab/kangaroo/pal` on the IAS GitLab.
-Use `git log -- <folder>` to see the history of one package.
-
-
-# Clear old subscriber controller
-
-```
-rosrun controller_manager controller_manager stop subscriber_controller && rosrun controller_manager controller_manager unload subscriber_controller
-```
+This repository combines several repos with their full history (`kangaroo-pal-physics-simulator`,
+`pal_policy_deployer` and `subscriber_controller` came from `humanoids-lab/kangaroo/pal` on the
+IAS GitLab). Use `git log -- <folder>` for one package.

@@ -1,4 +1,25 @@
-# The same task with the upper-body standing policy.
-profile: upperbody
+# The grasp-cube task with the upper-body standing policy. See grasp-cube.yaml for what each
+# key does.
+robot: upper_body_nogravcomp
 instruction: Grasp the cube and move it to the goal
 scene: {arrangement: A}
+
+# Mjlab-Grasp-UpperBody-Standing-ArmV36-Pal-Kangaroo-Grippers at pal_mjlab commit dfac6068:
+# waist, both arms and both jaws. Order matters.
+model:
+  model_path: /catkin_ws/src/models/kangaroo_grasp_upper_body_standing/2026-09-28_11-57-28_grasp-upperbody-standing-armv36-slow50-notable-binjaw-scratch_s42/model_700.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, tcp_pos_b, object_pos_b, object_yaw_b, goal_pos_b, tcp_quat_b]
+  action_dim: 18
+  action_mode: delta_joint_position
+  # The gravity PD pre-load the policy starts from, qfrc_bias / kp at the start pose: mean of
+  # joint_target minus joint_pos in start_observation_distribution.json. Added to the measured
+  # position to seed the target, so the handover holds the pose without a gravity bridge.
+  target_preload: [0.003, 0.0,
+                   -0.092, 0.027, 0.010, 0.110, -0.012, -0.050, 0.0,
+                   0.090, 0.019, -0.012, 0.109, 0.002, -0.052, 0.0]
+
+# The object pose comes from this TF frame (base_link); the goal is a constant in base_link.
+# Replace the object frame with a pose source before physical deployment, or use
+# mock_object_position_b / mock_object_yaw_b instead of object_frame.
+object_frame: cube_1
+goal_position_b: [0.5, 0.11, 0.085]

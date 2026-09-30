@@ -10,13 +10,14 @@ import math
 import os
 import re
 
+import rosnode
 import rospy
 import yaml
 from task_config import resolve
 from controller_manager_msgs.srv import LoadController, SwitchController, UnloadController
 
 
-# Used when the profile has no impedance_joint_names: the single-arm grasp profiles.
+# Used when the config has no impedance_joint_names: the single-arm grasp robots.
 DEFAULT_JOINTS = ["arm_left_{}_joint".format(index) for index in range(1, 8)]
 CONTROLLER = "subscriber_controller"
 
@@ -34,17 +35,17 @@ def actuator_entries(value):
                 yield entry
 
 
-def load_gains(profile_path):
-    with open(profile_path, encoding="utf-8") as stream:
-        profile = yaml.safe_load(stream)
-    if not isinstance(profile, dict) or not profile.get("model_path"):
-        raise ValueError("grasp profile has no model_path")
-    joints = profile.get("impedance_joint_names", DEFAULT_JOINTS)
+def load_gains(config_path):
+    with open(config_path, encoding="utf-8") as stream:
+        config = yaml.safe_load(stream)
+    if not isinstance(config, dict) or not config.get("model_path"):
+        raise ValueError("deployment config has no model_path")
+    joints = config.get("impedance_joint_names", DEFAULT_JOINTS)
     if not isinstance(joints, list) or not joints or not all(isinstance(j, str) for j in joints):
         raise ValueError("impedance_joint_names must be a non-empty list of joint names")
-    model_path = profile["model_path"]
+    model_path = config["model_path"]
     if not os.path.isabs(model_path):
-        model_path = os.path.join(os.path.dirname(profile_path), model_path)
+        model_path = os.path.join(os.path.dirname(config_path), model_path)
     env_path = os.path.join(os.path.dirname(model_path), "params", "env.yaml")
     # BaseLoader reads MJLab's Python-tagged training YAML as plain data.
     with open(env_path, encoding="utf-8") as stream:
@@ -68,7 +69,9 @@ def load_gains(profile_path):
 
 def main():
     rospy.init_node("spawn_grasp_controller")
-    env_path, gains = load_gains(resolve(rospy.get_param("~task", ""), rospy.get_param("~profile", ""))[1])
+    config_path = rospy.get_param("~config", "") or resolve(
+        rospy.get_param("~task", ""), rospy.get_param("~robot", ""))[1]
+    env_path, gains = load_gains(config_path)
     for joint, (stiffness, damping) in gains.items():
         namespace = "/{}/joints/{}/impedance_params".format(CONTROLLER, joint)
         rospy.set_param(namespace + "/stiffness_factor", stiffness)
@@ -89,6 +92,14 @@ def main():
     if not switch([CONTROLLER], [], 2).ok:
         raise RuntimeError("could not start {}".format(CONTROLLER))
     rospy.loginfo("Started %s with grasp training gains", CONTROLLER)
+    with open(config_path, encoding="utf-8") as stream:
+        expected = yaml.safe_load(stream).get("gravity_compensation")
+    if expected is not None:
+        running = "/gravity_compensation" in rosnode.get_node_names()
+        if running != bool(expected):
+            rospy.logwarn("the robot sets gravity_compensation: %s, but the gravity bridge is %s; "
+                          "use the matching controllers launch file", expected,
+                          "running" if running else "not running")
     rospy.on_shutdown(lambda: unload(CONTROLLER))
     rospy.spin()
 

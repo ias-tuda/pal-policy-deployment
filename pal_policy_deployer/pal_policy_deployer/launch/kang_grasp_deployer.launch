@@ -1,8 +1,8 @@
 <launch>
-  <arg name="profile" default="$(find pal_policy_deployer)/config/profiles/cube.yaml" />
+  <arg name="config" default="$(find pal_policy_deployer)/config/legacy/cube.yaml" />
   <arg name="publish_commands" default="true" />
-  <arg name="joint_state_topic" default="" doc="Override the profile topic; empty uses the profile." />
-  <arg name="action_topic" default="" doc="Override the profile topic; empty uses the profile." />
+  <arg name="joint_state_topic" default="" doc="Override the topic of the config; empty uses the config." />
+  <arg name="action_topic" default="" doc="Override the topic of the config; empty uses the config." />
   <arg name="start_config_path" default="" />
   <arg name="start_controllers" default="true" />
   <arg name="control" default="impedance" doc="impedance (subscriber_controller) or position (trajectory controllers)" />
@@ -10,7 +10,7 @@
 
   <node pkg="pal_policy_inferer" type="pal_policy_inferer_mjlab_node"
         name="pal_policy_inferer_mjlab_node" output="screen">
-    <rosparam command="load" file="$(arg profile)" />
+    <rosparam command="load" file="$(arg config)" />
     <param name="task" value="grasp" />
     <param if="$(eval arg('joint_state_topic') != '')" name="joint_state_topic" value="$(arg joint_state_topic)" />
     <param if="$(eval arg('action_topic') != '')" name="action_topic" value="$(arg action_topic)" />
@@ -30,7 +30,7 @@
 
   <include if="$(eval start_controllers and control == 'impedance')"
            file="$(find pal_policy_deployer)/launch/kang_grasp_controllers.launch">
-    <arg name="profile" value="$(arg profile)" />
+    <arg name="config" value="$(arg config)" />
   </include>
 
   <include if="$(eval start_controllers and control == 'position')"

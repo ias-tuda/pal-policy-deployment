@@ -176,7 +176,7 @@ std::vector<int64_t> time_step_shape;
 std::vector<double> action;
 std::vector<double> zero_action;
 
-// The grasp observation contract is supplied by the selected policy profile.
+// The grasp observation contract is supplied by the selected policy config.
 std::vector<std::string> grasp_joint_names;
 std::vector<std::string> grasp_arm_joint_names;
 // Indices into grasp_joint_names observed by joint_vel (defaults to all joint_names).
@@ -1111,11 +1111,11 @@ bool loadGraspStartConfig(ros::NodeHandle& nh, const std::string& model_path)
         }
         if (!nh.getParam("default_joint_pos", grasp_default_joint_pos) ||
             grasp_default_joint_pos.size() != grasp_joint_names.size()) {
-            ROS_ERROR("Grasp profile needs default_joint_pos when no deployment_start_config.json is present");
+            ROS_ERROR("Grasp config needs default_joint_pos when no deployment_start_config.json is present");
             return false;
         }
         grasp_default_joint_vel.assign(grasp_joint_names.size(), 0.0);
-        ROS_WARN("No deployment_start_config.json beside ONNX; using profile default_joint_pos");
+        ROS_WARN("No deployment_start_config.json beside ONNX; using config default_joint_pos");
     } else {
         try {
             boost::property_tree::ptree root;
@@ -1194,7 +1194,7 @@ bool loadGraspActionScale(const std::string& model_path)
 }
 
 // The BinaryJawAction rate limit (rad per step) from actions.gripper in params/env.yaml. The
-// term must exist exactly when the profile names gripper joints, so a profile cannot drop or
+// term must exist exactly when the config names gripper joints, so a config cannot drop or
 // invent the jaw actions of the checkpoint.
 bool loadGraspGripperRate(const std::string& model_path)
 {
@@ -1256,7 +1256,7 @@ bool loadGraspDeltaActionConfig(ros::NodeHandle& nh, const std::string& model_pa
         return false;
     }
     if (nh.hasParam("action_scale")) {
-        ROS_ERROR("action_scale is read from the model's params/env.yaml; remove it from the profile");
+        ROS_ERROR("action_scale is read from the model's params/env.yaml; remove it from the config");
         return false;
     }
     if (!loadGraspActionScale(model_path) || !loadGraspGripperRate(model_path)) return false;
@@ -1312,7 +1312,7 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
         !nh.getParam("arm_joint_names", grasp_arm_joint_names) || grasp_arm_joint_names.empty() ||
         !nh.getParam("observation_terms", grasp_observation_terms) || grasp_observation_terms.empty() ||
         !nh.getParam("action_dim", config.action_dim) || config.action_dim <= 0) {
-        ROS_ERROR("Grasp profile requires joint_names, arm_joint_names, observation_terms and positive action_dim");
+        ROS_ERROR("Grasp config requires joint_names, arm_joint_names, observation_terms and positive action_dim");
         return false;
     }
     if (!loadGraspStartConfig(nh, model_path)) return false;
@@ -1378,20 +1378,20 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     if (!grasp_object_frame.empty()) {
         // Tracked path: object values come only from TF, never from mock parameters.
         if (nh.hasParam("mock_object_position_b") || nh.hasParam("mock_object_yaw_b")) {
-            ROS_ERROR("Grasp profile sets object_frame and mock_object_*; use one object source");
+            ROS_ERROR("Grasp config sets object_frame and mock_object_*; use one object source");
             return false;
         }
         grasp_object_b.assign(3, std::numeric_limits<double>::quiet_NaN());
         grasp_object_yaw_b = 0.0;
     } else {
         if (!nh.getParam("mock_object_position_b", grasp_object_b) || grasp_object_b.size() != 3) {
-            ROS_ERROR("Grasp profile requires object_frame or a 3-value mock_object_position_b");
+            ROS_ERROR("Grasp config requires object_frame or a 3-value mock_object_position_b");
             return false;
         }
         nh.param("mock_object_yaw_b", grasp_object_yaw_b, 0.0);
     }
     if (!nh.getParam("goal_position_b", grasp_goal_b) || grasp_goal_b.size() != 3) {
-        ROS_ERROR("Grasp profile requires a 3-value goal_position_b");
+        ROS_ERROR("Grasp config requires a 3-value goal_position_b");
         return false;
     }
     nh.param("policy_rate", grasp_rate, 50.0);

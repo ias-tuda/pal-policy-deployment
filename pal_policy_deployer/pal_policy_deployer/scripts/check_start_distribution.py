@@ -54,12 +54,12 @@ def feature_labels(term, dim, joint_names, joint_vel_names):
     return [str(i) for i in range(dim)]
 
 
-def check_observation(observation, profile_terms, distribution, joint_names, joint_vel_names,
+def check_observation(observation, config_terms, distribution, joint_names, joint_vel_names,
                       tolerance, term_tolerances):
-    """Return (rows, ok). Terms are matched by order; the training and profile names differ."""
-    if len(profile_terms) != len(distribution):
-        raise ValueError("profile has {} observation terms but the distribution has {}".format(
-            len(profile_terms), len(distribution)))
+    """Return (rows, ok). Terms are matched by order; the training and config names differ."""
+    if len(config_terms) != len(distribution):
+        raise ValueError("config has {} observation terms but the distribution has {}".format(
+            len(config_terms), len(distribution)))
     expected_dim = sum(len(stats["mean"]) for _, stats in distribution)
     if len(observation) != expected_dim:
         raise ValueError("observation has {} values but the distribution describes {}".format(
@@ -68,7 +68,7 @@ def check_observation(observation, profile_terms, distribution, joint_names, joi
     rows = []
     ok = True
     offset = 0
-    for term, (train_name, stats) in zip(profile_terms, distribution):
+    for term, (train_name, stats) in zip(config_terms, distribution):
         dim = len(stats["mean"])
         tol = float(term_tolerances.get(term, term_tolerances.get(train_name, tolerance)))
         for i, label in enumerate(feature_labels(term, dim, joint_names, joint_vel_names)):
@@ -139,7 +139,7 @@ def main():
     rospy.init_node("check_start_distribution", anonymous=True)
     policy_node = rospy.get_param("~policy_node", "/pal_policy_inferer_mjlab_node").rstrip("/")
     try:
-        profile_terms = rospy.get_param(policy_node + "/observation_terms")
+        config_terms = rospy.get_param(policy_node + "/observation_terms")
         joint_names = rospy.get_param(policy_node + "/joint_names", [])
         joint_vel_names = rospy.get_param(policy_node + "/joint_vel_names", joint_names)
         topic = rospy.get_param("~observation_topic", rospy.get_param(
@@ -165,7 +165,7 @@ def main():
     rospy.loginfo("Checking %s against %s", topic, path)
     try:
         observation, count = ObservationCollector(topic).collect(duration, timeout)
-        rows, ok = check_observation(observation, profile_terms, distribution, joint_names,
+        rows, ok = check_observation(observation, config_terms, distribution, joint_names,
                                      joint_vel_names, tolerance, term_tolerances)
     except (RuntimeError, ValueError) as error:
         rospy.logerr("Start distribution check failed: %s", error)

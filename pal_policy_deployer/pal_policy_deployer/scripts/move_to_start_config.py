@@ -115,7 +115,7 @@ def move():
     if not verified_names:
         raise ValueError("at least one joint must be verified")
     # Added to the commanded position only: without a gravity bridge, the PD error that holds
-    # the start pose against gravity (the grasp profile's target_preload). Disabled when a
+    # the start pose against gravity (the task model target_preload). Disabled when a
     # gravity bridge adds that torque instead.
     preload = [0.0] * len(joint_names)
     if rospy.get_param("~use_target_preload", True):

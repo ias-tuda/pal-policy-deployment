@@ -13,7 +13,7 @@ Topics:
 While the policy is not running, an observer runs the inferer with dry_run:=true. It publishes
 the observation only while the joint state and the object TF are fresh. The policy is ready
 when a fresh observation is inside the training start distribution widened by ~ood_margins
-(per profile term, else ~ood_margin): only serious out-of-distribution inputs block the start.
+(per observation term, else ~ood_margin): only serious out-of-distribution inputs block the start.
 Features outside the strict check_start_distribution.py range are listed as notes.
 
 While the policy runs, the supervisor stops it (it does not resume) when
@@ -83,10 +83,10 @@ class Job(object):
 class Readiness(object):
     """Checks the dry-run observations against the training start distribution."""
 
-    def __init__(self, profile, distribution_path, topic, window, margin, margins):
-        self._terms = profile["observation_terms"]
-        self._joint_names = profile.get("joint_names", [])
-        self._joint_vel_names = profile.get("joint_vel_names", self._joint_names)
+    def __init__(self, config, distribution_path, topic, window, margin, margins):
+        self._terms = config["observation_terms"]
+        self._joint_names = config.get("joint_names", [])
+        self._joint_vel_names = config.get("joint_vel_names", self._joint_names)
         self._distribution = load_distribution(distribution_path)
         self._window = window
         self._margin = margin
@@ -152,7 +152,7 @@ class RunGuard(object):
             offset += len(stats["mean"])
         missing = set(ood_terms) - set(terms)
         if missing:
-            raise ValueError("~running_ood_terms not in the profile: {}".format(", ".join(sorted(missing))))
+            raise ValueError("~running_ood_terms not in the config: {}".format(", ".join(sorted(missing))))
         self._frames = frames
         self._timeout = timeout
         self._startup_timeout = startup_timeout
@@ -398,8 +398,8 @@ class Supervisor(object):
 
 def main():
     rospy.init_node("policy_supervisor")
-    task, profile_path, profile = node_config()
-    model_dir = os.path.dirname(profile["model_path"])
+    task, config_path, config = node_config()
+    model_dir = os.path.dirname(config["model_path"])
     start_config = (rospy.get_param("~start_config_path", "")
                     or os.path.join(model_dir, "deployment_start_config.json"))
     distribution_path = (rospy.get_param("~distribution_path", "")
@@ -410,7 +410,7 @@ def main():
 
     inferer = " ".join([
         "roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch",
-        "profile:=" + shlex.quote(profile_path), "start_controllers:=false",
+        "config:=" + shlex.quote(config_path), "start_controllers:=false",
         "joint_state_topic:=/joint_states", rospy.get_param("~launch_args", "")])
     commands = {
         "policy": rospy.get_param("~deploy_command", inferer + " publish_commands:=true"),
@@ -423,24 +423,24 @@ def main():
         rospy.loginfo("%s: %s", name, command)
 
     observation_topic = rospy.get_param(
-        "~observation_topic", profile.get("observation_topic", "/pal_policy/observation"))
+        "~observation_topic", config.get("observation_topic", "/pal_policy/observation"))
     readiness = Readiness(
-        profile, distribution_path, observation_topic,
+        config, distribution_path, observation_topic,
         float(rospy.get_param("~observation_window", 0.5)),
-        float(setting("ood_margin", 0.05, profile, task)), setting("ood_margins", {}, profile, task))
+        float(setting("ood_margin", 0.05, config, task)), setting("ood_margins", {}, config, task))
     run_guard = RunGuard(
-        profile["observation_terms"], load_distribution(distribution_path), observation_topic,
-        setting("running_ood_terms", ["object_to_goal_b"], profile, task),
-        float(setting("running_ood_margin", 0.05, profile, task)),
-        int(setting("running_ood_frames", 3, profile, task)),
-        float(setting("running_timeout", 1.0, profile, task)),
-        float(setting("startup_timeout", 20.0, profile, task)))
+        config["observation_terms"], load_distribution(distribution_path), observation_topic,
+        setting("running_ood_terms", ["object_to_goal_b"], config, task),
+        float(setting("running_ood_margin", 0.05, config, task)),
+        int(setting("running_ood_frames", 3, config, task)),
+        float(setting("running_timeout", 1.0, config, task)),
+        float(setting("startup_timeout", 20.0, config, task)))
     # Median of the recent object TF stamp ages (receipt minus stamp) must lie in
     # [-~object_stamp_max_future, ~object_stamp_max_age]; mock objects have no TF to check.
     stamp_check = None
-    if profile.get("object_frame"):
+    if config.get("object_frame"):
         stamp_check = ObjectStampCheck(
-            profile["object_frame"], float(rospy.get_param("~object_stamp_max_future", 0.05)),
+            config["object_frame"], float(rospy.get_param("~object_stamp_max_future", 0.05)),
             float(rospy.get_param("~object_stamp_max_age", 0.5)),
             int(rospy.get_param("~object_stamp_window", 15)))
     supervisor = Supervisor(commands, readiness, run_guard, stamp_check,

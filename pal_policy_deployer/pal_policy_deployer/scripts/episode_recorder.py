@@ -86,12 +86,12 @@ def read_json(path):
         return None
 
 
-def goal_term_index(profile, distribution_path, term="object_to_goal_b"):
+def goal_term_index(config, distribution_path, term="object_to_goal_b"):
     """Index of the 3 values of term in the observation, or None without that term."""
-    terms = profile.get("observation_terms", [])
+    terms = config.get("observation_terms", [])
     if term not in terms:
         return None
-    # The profile names the terms, the start distribution has their sizes (see RunGuard).
+    # The config names the terms, the start distribution has their sizes (see RunGuard).
     offset = 0
     for name, (_, stats) in zip(terms, load_distribution(distribution_path)):
         if name == term:
@@ -112,15 +112,15 @@ def classify_stop(reason):
 
 
 class Recorder(object):
-    def __init__(self, root, task, supervisor, profile_path, topics, instruction, scene, operator,
+    def __init__(self, root, task, supervisor, config_path, topics, instruction, scene, operator,
                  observation_topic, gap_threshold, max_duration, calibration_camera,
                  goal_index, goal_threshold):
         self._root = os.path.join(root, task)
         self._task = task
-        self._profile_path = profile_path
-        with open(profile_path) as stream:
-            self._profile_text = stream.read()
-        self._profile = yaml.safe_load(self._profile_text)
+        self._config_path = config_path
+        with open(config_path) as stream:
+            self._config_text = stream.read()
+        self._config = yaml.safe_load(self._config_text)
         self._topics = topics
         self._instruction = instruction
         self._scene = scene
@@ -222,7 +222,7 @@ class Recorder(object):
         session = now.strftime("%Y-%m-%d")
         directory = os.path.join(self._root, session, episode_id)
         os.makedirs(directory)
-        model_path = self._profile.get("model_path", "")
+        model_path = self._config.get("model_path", "")
         meta = {
             "episode_id": episode_id,
             "session": session,
@@ -231,12 +231,12 @@ class Recorder(object):
             "operator_name": self._operator,
             "language_instruction": self._instruction,
             "scene": dict(self._scene),
-            "profile_path": self._profile_path,
-            "profile": self._profile_text,
+            "config_path": self._config_path,
+            "config": self._config_text,
             "model_path": model_path,
             "policy_id": "{}/{}".format(os.path.basename(os.path.dirname(model_path)),
                                         os.path.basename(model_path)),
-            "control_freq": float(self._profile.get("policy_rate", 50.0)),
+            "control_freq": float(self._config.get("policy_rate", 50.0)),
             "topics": self._topics,
             "missing_topics": [],  # Checked at the first observation, see _check_topics.
             "hostname": socket.gethostname(),
@@ -267,7 +267,7 @@ class Recorder(object):
             rospy.logwarn("rosbag: %s", line)
 
     def _save_context(self, directory, model_path):
-        """Files the robot and policy profiles for oopsie-data need; none is essential."""
+        """Files the robot and policy configs for oopsie-data need; none is essential."""
         try:
             # Not rospy.get_param("/"): once the node has logged, rospy's parameter cache
             # answers it with only /rosout_disable_topics_generation.
@@ -489,27 +489,27 @@ def main():
     root = os.path.expanduser(rospy.get_param("~record_dir", "/catkin_ws/ias-nas/home/oopsie-data"))
     if not os.path.isdir(root):
         os.makedirs(root)
-    task, profile_path, profile = node_config()
+    task, config_path, config = node_config()
     if task is None:
         raise SystemExit("episode_recorder needs ~task (config/tasks/<task>.yaml)")
     scene = dict(task.get("scene") or {})
     scene.update(rospy.get_param("~scene", {}))
-    policy_rate = float(profile.get("policy_rate", 50.0))
+    policy_rate = float(config.get("policy_rate", 50.0))
     # The same start distribution as policy_supervisor's.
     distribution_path = (rospy.get_param("~distribution_path", "") or os.path.join(
-        os.path.dirname(profile["model_path"]), "start_observation_distribution.json"))
+        os.path.dirname(config["model_path"]), "start_observation_distribution.json"))
     goal_index = None
     try:
-        goal_index = goal_term_index(profile, distribution_path)
+        goal_index = goal_term_index(config, distribution_path)
     except (IOError, OSError, ValueError, KeyError) as error:
         rospy.logwarn("no goal distance: %s", error)
     recorder = Recorder(
-        root, task["name"], rospy.get_param("~supervisor", "/pal_policy_supervisor"), profile_path,
+        root, task["name"], rospy.get_param("~supervisor", "/pal_policy_supervisor"), config_path,
         rospy.get_param("~topics", DEFAULT_TOPICS),
         rospy.get_param("~instruction", "") or task["instruction"],
         scene,
         rospy.get_param("~operator", "operator1"),
-        rospy.get_param("~observation_topic", profile.get("observation_topic", "/pal_policy/observation")),
+        rospy.get_param("~observation_topic", config.get("observation_topic", "/pal_policy/observation")),
         # A gap is a pause of more than this many policy periods.
         float(rospy.get_param("~gap_periods", 3)) / policy_rate,
         float(rospy.get_param("~max_duration", 600.0)),

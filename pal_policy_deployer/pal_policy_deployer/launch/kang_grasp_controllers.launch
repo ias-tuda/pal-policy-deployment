@@ -1,6 +1,7 @@
 <launch>
-  <arg name="task" default="grasp-cube" doc="Task file in config/tasks/, for its profile." />
-  <arg name="profile" default="" doc="Replaces the task's profile (a name in config/profiles/ or a path)." />
+  <arg name="task" default="grasp-cube" doc="Task file in config/tasks/, for its robot and model." />
+  <arg name="robot" default="" doc="Replaces the task's robot (a name in config/robots/ or a path)." />
+  <arg name="config" default="" doc="A deployment config file instead of task and robot." />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
     <arg name="local_joint_control_type" value="no_control" />
@@ -34,6 +35,7 @@
   <node pkg="pal_policy_deployer" type="spawn_grasp_controller.py"
         name="spawn_grasp_controller" output="screen" required="true">
     <param name="task" value="$(arg task)" />
-    <param name="profile" value="$(arg profile)" />
+    <param name="robot" value="$(arg robot)" />
+    <param name="config" value="$(arg config)" />
   </node>
 </launch>

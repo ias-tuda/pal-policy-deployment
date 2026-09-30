@@ -1,9 +1,9 @@
 <launch>
   <!-- Start the grasp controllers, then start, stop and home the grasp policy on ROS service
        calls (~start, ~stop, ~go_home), and publish on ~readiness whether it may start. -->
-  <arg name="task" default="grasp-cube" doc="Task file in config/tasks/; it names the profile, the instruction and the scene, and the record folder." />
-  <arg name="profile" default="" doc="Replaces the task's profile (a name in config/profiles/ or a path)." />
-  <arg name="start_config_path" default="" doc="Empty uses deployment_start_config.json beside the profile's model." />
+  <arg name="task" default="grasp-cube" doc="Task file in config/tasks/; it names the robot and the model, the instruction and the scene, and the record folder." />
+  <arg name="robot" default="" doc="Replaces the task's robot (a name in config/robots/ or a path)." />
+  <arg name="start_config_path" default="" doc="Empty uses deployment_start_config.json beside the task's model." />
   <arg name="launch_args" default="" doc="Extra args for kang_grasp_upperbody_deployer.launch." />
   <arg name="home_args" default="_position_tolerance:=0.1" doc="Extra params for move_to_start_config.py." />
   <arg name="require_ready" default="true" doc="Refuse ~start while ~readiness is not ready." />
@@ -16,23 +16,23 @@
 
   <include if="$(arg start_controllers)" file="$(find pal_policy_deployer)/launch/kang_grasp_controllers.launch">
     <arg name="task" value="$(arg task)" />
-    <arg name="profile" value="$(arg profile)" />
+    <arg name="robot" value="$(arg robot)" />
   </include>
 
   <node pkg="pal_policy_deployer" type="policy_supervisor.py" name="pal_policy_supervisor" output="screen">
     <param name="task" value="$(arg task)" />
-    <param name="profile" value="$(arg profile)" />
+    <param name="robot" value="$(arg robot)" />
     <param name="start_config_path" value="$(arg start_config_path)" />
     <param name="launch_args" value="$(arg launch_args)" />
     <param name="home_args" value="$(arg home_args)" />
     <param name="require_ready" value="$(arg require_ready)" />
-    <!-- The OOD margins and running-stop thresholds are in the profile's supervisor: block. -->
+    <!-- The OOD margins and running-stop thresholds are in the task's supervisor: block. -->
   </node>
 
   <!-- Records each policy run as a rosbag episode for oopsie-data while enabled (~set_enabled). -->
   <node if="$(arg record)" pkg="pal_policy_deployer" type="episode_recorder.py" name="episode_recorder" output="screen">
     <param name="task" value="$(arg task)" />
-    <param name="profile" value="$(arg profile)" />
+    <param name="robot" value="$(arg robot)" />
     <param name="record_dir" value="$(arg record_dir)" />
     <param name="operator" value="$(arg operator)" />
     <param name="instruction" value="$(arg instruction)" />

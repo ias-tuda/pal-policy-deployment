@@ -1,9 +1,9 @@
 <launch>
-  <!-- Move the profile's joints to deployment_start_config.json with whole-tree gravity
+  <!-- Move the config's joints to deployment_start_config.json with whole-tree gravity
        compensation on the waist and both arms. Run with the upper-body controllers running.
        The move ends by exiting, which stops the gravity bridge; the controller then holds the
        last compensated command until the policy takes over with its target_preload. -->
-  <arg name="profile" default="$(find pal_policy_deployer)/config/profiles/upperbody.yaml" />
+  <arg name="config" doc="Deployment config file: rosrun pal_policy_deployer task_config.py TASK prints its path." />
   <arg name="start_config_path" />
 
   <node pkg="pal_gravity_compensation" type="gravity_compensation_node"
@@ -13,7 +13,7 @@
 
   <node pkg="pal_policy_deployer" type="move_to_start_config.py"
         name="move_to_start_config" output="screen" required="true">
-    <rosparam command="load" file="$(arg profile)" />
+    <rosparam command="load" file="$(arg config)" />
     <param name="start_config_path" value="$(arg start_config_path)" />
     <!-- The bridge adds the gravity torque, so command the start pose itself. -->
     <param name="command_topic" value="/pal_grasp/desired_state_uncompensated" />

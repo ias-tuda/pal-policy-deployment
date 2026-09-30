@@ -83,8 +83,8 @@ class TrainingIkNode {
     if (!policy_node_name.empty() && policy_node_name[0] != '/') {
       policy_node_name.insert(0, "/");
     }
-    // Topics come from our own override, else the policy profile, else the default,
-    // so the policy profile is the single place they are configured.
+    // Topics come from our own override, else the policy config, else the default,
+    // so the policy config is the single place they are configured.
     const auto topic_param = [&](const std::string& name, const std::string& fallback) {
       std::string value;
       if (private_nh_.getParam(name, value) && !value.empty()) return value;
@@ -148,7 +148,7 @@ class TrainingIkNode {
       }
     }
     if (auto_discovered_start_config && !std::ifstream(start_config_path).good()) {
-      ROS_WARN("No deployment_start_config.json beside ONNX; using IK profile posture");
+      ROS_WARN("No deployment_start_config.json beside ONNX; using IK config posture");
       start_config_path.clear();
     }
     if (!start_config_path.empty()) {

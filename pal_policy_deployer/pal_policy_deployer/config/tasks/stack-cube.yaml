@@ -1,0 +1,37 @@
+# Stack the grasped cube on the second cube (cube_2) with the left-arm stacking policy.
+# See grasp-cube.yaml for what each key does.
+robot: left_arm_gravcomp
+instruction: Stack the cube on top of the other cube
+scene: {arrangement: A}
+
+# stack-std-scratch (kangaroo_stack_standing): left arm and left jaw, trained with gravity
+# compensation, jaw-relative object observations (38). Same layout as the grasp-cube model.
+model:
+  model_path: /catkin_ws/src/models/kangaroo-stack-cube/2026-09-29_20-36-22_stack-std-scratch_s123/model_4200.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_yaw_to_jaw, object_to_goal_b]
+  action_dim: 8
+  action_mode: delta_joint_position
+  target_preload: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# cube_1 is the cube that is grasped, cube_2 the cube it is stacked on. The policy sees
+# object_to_goal_b = goal - object, and in training the goal is the top of the base object
+# (goal_pose stack_on_top, offset 0) resampled per episode. The inferer only takes a constant
+# goal, so cube_2 must stay where it was when goal_position_b was measured.
+object_frame: cube_1
+base_object_frame: cube_2
+# TODO: set goal_position_b to the cube_2 top-centre in base_link (cube_2 TF position plus half
+# a cube height in z); the value below is the grasp-cube goal, kept as a placeholder.
+goal_position_b: [0.499, 0.111, 0.085]
+object_timeout: 2.0
+
+supervisor:
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    joint_target_rel: 0.15   # rad
+    jaw_to_object_b: 0.03    # m
+    object_yaw_to_jaw: 0.2
+    object_to_goal_b: 0.03   # m
+  running_ood_terms: [object_to_goal_b]
+  running_ood_margin: 0.3    # m
