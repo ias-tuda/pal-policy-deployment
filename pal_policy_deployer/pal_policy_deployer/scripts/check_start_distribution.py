@@ -46,6 +46,8 @@ def feature_labels(term, dim, joint_names, joint_vel_names):
         return ["cos", "sin"]
     if term == "object_yaw_to_jaw" and dim == 2:
         return ["cos4d", "sin4d"]
+    if term == "object_rot6d_b" and dim == 6:
+        return ["x_x", "x_y", "x_z", "z_x", "z_y", "z_z"]  # object x axis, then z axis
     if term == "tcp_quat_b" and dim % 4 == 0:
         return ["{}{}".format(axis, i) for i in range(dim // 4) for axis in "wxyz"]
     if dim % 3 == 0 and term.endswith("_b"):

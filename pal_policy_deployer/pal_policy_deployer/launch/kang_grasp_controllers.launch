@@ -2,6 +2,7 @@
   <arg name="task" default="grasp-cube" doc="Task file in config/tasks/, for its robot and model." />
   <arg name="robot" default="" doc="Replaces the task's robot (a name in config/robots/ or a path)." />
   <arg name="config" default="" doc="A deployment config file instead of task and robot." />
+  <arg name="reload_controller" default="false" doc="true restarts a subscriber_controller left running with other parameters; the arm drops while it restarts, so support it first." />
   <arg name="gravity_bridge" default="true" doc="false for a robot without gravity compensation (left_arm_nogravcomp): its policy commands the controller directly, and the home move starts its own bridge." />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
@@ -38,5 +39,6 @@
     <param name="task" value="$(arg task)" />
     <param name="robot" value="$(arg robot)" />
     <param name="config" value="$(arg config)" />
+    <param name="reload" value="$(arg reload_controller)" />
   </node>
 </launch>

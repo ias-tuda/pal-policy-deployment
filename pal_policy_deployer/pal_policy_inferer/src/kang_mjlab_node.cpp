@@ -242,6 +242,8 @@ std::vector<float> grasp_last_action;
 std::vector<double> grasp_object_b;
 std::vector<double> grasp_goal_b;
 double grasp_object_yaw_b = 0.0;
+// Full object orientation in base_link for object_rot6d_b, not folded by object_yaw_symmetry.
+tf2::Matrix3x3 grasp_object_rot_b = tf2::Matrix3x3::getIdentity();
 // With object_yaw_symmetry n > 1 the tracked yaw is folded into [-pi/n, pi/n), e.g. 4 for a
 // cube whose training yaw covered only +-pi/4.
 int grasp_object_yaw_symmetry = 1;
@@ -289,6 +291,7 @@ int graspTermDim(const std::string& term)
     if (term == "object_pos_b" || term == "goal_pos_b" || term == "object_to_goal_b") return 3;
     if (term == "jaw_to_object_b") return grasp_jaw_joint.empty() ? -1 : 3;
     if (term == "object_yaw_b") return 2;
+    if (term == "object_rot6d_b") return 6;
     if (term == "object_yaw_to_jaw") return grasp_jaw_joint.empty() ? -1 : 2;
     if (term == "tcp_quat_b") return 4 * grasp_tip_links.size();
     return -1;
@@ -975,6 +978,11 @@ bool buildGraspObservation(std::vector<float>& obs)
         } else if (term == "object_yaw_b") {
             obs.insert(obs.end(), {static_cast<float>(std::cos(grasp_object_yaw_b)),
                                    static_cast<float>(std::sin(grasp_object_yaw_b))});
+        } else if (term == "object_rot6d_b") {
+            // The object's x axis, then its z axis, in base_link (columns 0 and 2): an upright
+            // object with yaw a gives [cos a, sin a, 0, 0, 0, 1], as the training start range.
+            for (const int c : {0, 2})
+                for (int r = 0; r < 3; ++r) obs.push_back(static_cast<float>(grasp_object_rot_b[r][c]));
         } else if (term == "goal_pos_b") {
             for (double value : grasp_goal_b) obs.push_back(static_cast<float>(value));
         } else if (term == "jaw_to_object_b") {
@@ -1099,11 +1107,15 @@ bool updateGraspObject()
     }
     const auto& t = tf.transform.translation;
     const auto& r = tf.transform.rotation;
+    const tf2::Quaternion quat(r.x, r.y, r.z, r.w);
+    if (!std::isfinite(quat.length()) || quat.length() < 0.5) return false;
+    const tf2::Matrix3x3 rot(quat.normalized());
     double roll, pitch, yaw;
-    tf2::Matrix3x3(tf2::Quaternion(r.x, r.y, r.z, r.w)).getRPY(roll, pitch, yaw);
+    rot.getRPY(roll, pitch, yaw);
     if (!std::isfinite(t.x) || !std::isfinite(t.y) || !std::isfinite(t.z) || !std::isfinite(yaw))
         return false;
     grasp_object_b = {t.x, t.y, t.z};
+    grasp_object_rot_b = rot;
     if (grasp_object_yaw_symmetry > 1) {
         const double period = 2.0 * M_PI / grasp_object_yaw_symmetry;
         yaw -= period * std::floor(yaw / period + 0.5);
@@ -1630,9 +1642,19 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
             return false;
         }
         nh.param("mock_object_yaw_b", grasp_object_yaw_b, 0.0);
+        grasp_object_rot_b.setRPY(0.0, 0.0, grasp_object_yaw_b);
     }
+    // Only goal_pos_b and object_to_goal_b need a goal (e.g. not the mug-turn policy).
+    const bool needs_goal = std::any_of(grasp_observation_terms.begin(), grasp_observation_terms.end(),
+        [](const std::string& term) { return term == "goal_pos_b" || term == "object_to_goal_b"; });
     nh.param<std::string>("base_object_frame", grasp_base_object_frame, "");
-    if (!grasp_base_object_frame.empty()) {
+    if (!needs_goal) {
+        if (!grasp_base_object_frame.empty() || nh.hasParam("goal_position_b")) {
+            ROS_ERROR("The observation terms have no goal; remove goal_position_b and base_object_frame");
+            return false;
+        }
+        grasp_goal_b.clear();
+    } else if (!grasp_base_object_frame.empty()) {
         // Goal from the base object TF, read once; a constant goal would conflict with it.
         if (grasp_object_frame.empty() || nh.hasParam("goal_position_b")) {
             ROS_ERROR("base_object_frame needs object_frame and replaces goal_position_b");

@@ -139,6 +139,11 @@ rosrun pal_policy_deployer move_and_deploy.sh $M/deployment_start_config.json co
 - `move_to_start_config.py` succeeds when the arm joints are within 0.05 rad of the targets and
   slower than 0.05 rad/s for 0.5 s. Pass `_position_tolerance:=0.1` to accept a pose that is
   up to 0.1 rad off.
+- `move_to_start_config.py` keeps the TCP (`tip_link` + `tcp_offset` in `base_link`) above
+  `_min_tcp_z:=-0.05`, so the move does not sweep through the table. It checks the straight
+  joint path with MoveIt's `/compute_fk` (needs `move_group`) and, where the path dips, bends
+  it upwards: one smooth move, no stop. A start or target pose below the limit lowers the limit
+  to it. `_check_tcp_height:=false` skips the check (for example without `move_group`).
 - `check_start_distribution.py` exits with 0 (pass), 1 (feature outside the training range) or
   2 (setup error). `tolerance:=0.01` widens the range.
 - Position control instead of the software PD: stop `subscriber_controller`, then use

@@ -1,0 +1,42 @@
+# Turn the upright mug by half a turn (training target_yaw pi) with the left-arm mug-turn
+# policy. See grasp-cube.yaml for what each key does.
+robot: left_arm_gravcomp
+instruction: Turn the mug around
+scene: {arrangement: A}
+
+# mug-turn-std-scratch (kangaroo-mug-turn): left arm and left jaw, trained with gravity
+# compensation (start joint_target_rel mean ~0), same actions, gains and robot as the
+# stack-cube run. No goal term (39 observations).
+model:
+  model_path: /catkin_ws/src/models/kangaroo-mug-turn/2026-09-29_20-39-20_mug-turn-std-scratch_s123/model_2600.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_rot6d_b]
+  action_dim: 8
+  action_mode: delta_joint_position
+  target_preload: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# The mug pose comes from this TF frame. object_rot6d_b is the mug frame's x axis, then its z
+# axis, in base_link (columns 0 and 2 of R_base_mug, pal_mjlab observations.py object_rot6d_b).
+# The TF frame must match the training mug (scene.py get_mug_spec): origin at the centre of the
+# body cylinder (61.5 mm above the bottom; body 123 mm tall, 32.5 mm radius), +z up the body
+# axis, +x through the handle. Yaw 0 points the handle away from the robot; training spawns it
+# within +-60 deg of that and turns it to pi (handle towards the robot, within +-25 deg).
+# The mug has no symmetry, so object_yaw_symmetry stays 1.
+object_frame: mug_1
+# mock_object_position_b: [0.500, 0.100, -0.060]   # instead of object_frame: a fixed pose
+# mock_object_yaw_b: 0.0
+# Training saw a 5-8 step lag and dropout (p=0.01, 5-50 steps) on the mug terms, as grasp-cube;
+# a lost tracker holds the last position and rotation, as the inferer does on a stale TF.
+object_timeout: 2.0
+
+supervisor:
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    joint_target_rel: 0.15   # rad
+    jaw_to_object_b: 0.03    # m
+    object_rot6d_b: 0.1
+  # No goal: stop when the mug leaves the start range of jaw_to_object_b widened by the margin
+  # (a mug tracking error, not the mug moving in the jaw).
+  running_ood_terms: [jaw_to_object_b]
+  running_ood_margin: 0.3    # m

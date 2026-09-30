@@ -6,6 +6,7 @@
   <arg name="task" default="grasp-cube-upperbody" doc="Task file in config/tasks/, for its robot and model." />
   <arg name="robot" default="" doc="Replaces the task's robot (a name in config/robots/ or a path)." />
   <arg name="config" default="" doc="A deployment config file instead of task and robot." />
+  <arg name="reload_controller" default="false" doc="true restarts a subscriber_controller left running with other parameters; the arm drops while it restarts, so support it first." />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
     <arg name="local_joint_control_type" value="no_control" />
@@ -47,5 +48,6 @@
     <param name="task" value="$(arg task)" />
     <param name="robot" value="$(arg robot)" />
     <param name="config" value="$(arg config)" />
+    <param name="reload" value="$(arg reload_controller)" />
   </node>
 </launch>

@@ -7,10 +7,85 @@ import threading
 import time
 
 import rospy
+from moveit_msgs.srv import GetPositionFK, GetPositionFKRequest
 from sensor_msgs.msg import JointState
 
 
 DEFAULT_JOINTS = ["arm_left_{}_joint".format(i) for i in range(1, 8)] + ["gripper_left_finger_joint"]
+
+
+class TcpHeight:
+    """Lowest TCP z in the base frame for a joint configuration, through MoveIt's /compute_fk.
+
+    Joints not given keep MoveIt's current state (the waist, the other arm).
+    """
+
+    def __init__(self, service, base_link, tip_links, tcp_offset, timeout):
+        rospy.wait_for_service(service, timeout)
+        self._fk = rospy.ServiceProxy(service, GetPositionFK, persistent=True)
+        self._request = GetPositionFKRequest()
+        self._request.header.frame_id = base_link
+        self._request.fk_link_names = list(tip_links)
+        self._offset = [float(v) for v in tcp_offset]
+
+    def __call__(self, names, positions):
+        self._request.robot_state.joint_state.name = list(names)
+        self._request.robot_state.joint_state.position = list(positions)
+        response = self._fk(self._request)
+        if response.error_code.val != 1:
+            raise RuntimeError("FK failed with MoveIt error {}".format(response.error_code.val))
+        heights = []
+        for pose in response.pose_stamped:
+            x, y, z, w = (pose.pose.orientation.x, pose.pose.orientation.y,
+                          pose.pose.orientation.z, pose.pose.orientation.w)
+            # Bottom row of the rotation matrix: the base z of the offset in the tip frame.
+            row = (2.0 * (x * z - w * y), 2.0 * (y * z + w * x), 1.0 - 2.0 * (x * x + y * y))
+            heights.append(pose.pose.position.z + sum(r * o for r, o in zip(row, self._offset)))
+        return min(heights)
+
+
+def bezier(q0, qc, q1, s):
+    """Quadratic Bezier through q0 and q1 with control point qc, and its derivative in s."""
+    position = [(1 - s) ** 2 * a + 2 * s * (1 - s) * c + s * s * b for a, c, b in zip(q0, qc, q1)]
+    slope = [2 * (1 - s) * (c - a) + 2 * s * (b - c) for a, c, b in zip(q0, qc, q1)]
+    return position, slope
+
+
+def plan_control_point(names, q0, q1, height, floor, samples, margin, max_iterations, step=0.01):
+    """Control point that keeps the TCP of the Bezier path at or above floor.
+
+    Starts from the straight line (control point at the midpoint). While a sample dips below the
+    floor, moves the control point along the z gradient at the lowest sample, by the joint change
+    of least norm that lifts that sample to floor + margin.
+    """
+    qc = [0.5 * (a + b) for a, b in zip(q0, q1)]
+    grid = [i / float(samples - 1) for i in range(samples)]
+    for iteration in range(max_iterations + 1):
+        lowest_s, lowest_z = None, float("inf")
+        for s in grid:
+            z = height(names, bezier(q0, qc, q1, s)[0])
+            if z < lowest_z:
+                lowest_s, lowest_z = s, z
+        if lowest_z >= floor:
+            return qc, lowest_z, iteration
+        if iteration == max_iterations:
+            break
+        weight = 2.0 * lowest_s * (1.0 - lowest_s)
+        if weight < 0.05:
+            break  # the dip is at an end point, which the control point cannot move
+        q = bezier(q0, qc, q1, lowest_s)[0]
+        gradient = []
+        for i in range(len(q)):
+            shifted = list(q)
+            shifted[i] += step
+            gradient.append((height(names, shifted) - lowest_z) / step)
+        norm = sum(g * g for g in gradient)
+        if norm < 1e-9:
+            break
+        scale = (floor + margin - lowest_z) / (weight * norm)
+        qc = [c + scale * g for c, g in zip(qc, gradient)]
+    raise RuntimeError("no path found that keeps the TCP above z {:.3f}: lowest {:.3f}".format(
+        floor, lowest_z))
 
 
 def load_targets(path, joint_names):
@@ -161,9 +236,40 @@ def move():
         raise RuntimeError("timed out waiting for controller subscriber")
     ensure_exclusive_publisher(command_topic)
 
+    # The verified (arm) joints follow a quadratic Bezier from start to target. Its control point
+    # is the midpoint (a straight line) unless that line takes the TCP below ~min_tcp_z; then it
+    # is lifted until the whole path stays above. The jaws get their goal directly.
+    q0 = [start[name] for name in verified_names]
+    q1 = [targets[name] for name in verified_names]
+    qc = [0.5 * (a + b) for a, b in zip(q0, q1)]
+    if rospy.get_param("~check_tcp_height", True):
+        tip_links = rospy.get_param("~tip_links", [rospy.get_param("~tip_link", "arm_left_7_link")])
+        height = TcpHeight(rospy.get_param("~fk_service", "/compute_fk"),
+                           rospy.get_param("~base_link", "base_link"), tip_links,
+                           rospy.get_param("~tcp_offset", [0.0, 0.0, 0.148]), startup_timeout)
+        min_tcp_z = float(rospy.get_param("~min_tcp_z", -0.05))
+        start_z, target_z = height(verified_names, q0), height(verified_names, q1)
+        # An end point below the limit (the policy stopped low) lowers the floor to it.
+        floor = min(min_tcp_z, start_z, target_z) - 0.002
+        if floor < min_tcp_z:
+            rospy.logwarn("TCP ends below z %.3f (start %.3f, target %.3f); keeping the path above %.3f",
+                          min_tcp_z, start_z, target_z, floor)
+        qc, lowest_z, iterations = plan_control_point(
+            verified_names, q0, q1, height, floor,
+            int(rospy.get_param("~height_samples", 40)),
+            positive_param("height_margin", 0.01), int(rospy.get_param("~height_iterations", 10)))
+        rospy.loginfo("Lowest TCP z on the path %.3f (floor %.3f, %d lifts)", lowest_z, floor, iterations)
+
+    # Minimum-jerk (quintic) timing along the path: the duration keeps the fastest joint at
+    # max_speed. For the straight line this is 1.875 * delta / duration.
+    peak = 0.0
+    for i in range(1, 200):
+        u = i / 200.0
+        s = u * u * u * (10.0 + u * (-15.0 + 6.0 * u))
+        slope = bezier(q0, qc, q1, s)[1]
+        peak = max(peak, 30.0 * u * u * (1.0 - u) * (1.0 - u) * max(abs(v) for v in slope))
+    duration = max(min_duration, peak / max_speed)
     max_delta = max(abs(targets[name] - start[name]) for name in joint_names)
-    # Minimum-jerk (quintic) profile: peak speed is 1.875 * delta / duration.
-    duration = max(min_duration, 1.875 * max_delta / max_speed)
     rospy.logwarn("Moving %d joints to %s over %.2f s; max change %.3f",
                   len(joint_names), path, duration, max_delta)
     for name in joint_names:
@@ -176,15 +282,15 @@ def move():
         u = min(1.0, elapsed / duration)
         blend = u * u * u * (10.0 + u * (-15.0 + 6.0 * u))
         blend_speed = 30.0 * u * u * (1.0 - u) * (1.0 - u) / duration
-        expected = {name: start[name] + blend * (targets[name] - start[name])
-                    for name in joint_names}
-        # The jaws get their goal directly; their own position loop does the motion.
-        positions = {name: commanded[name] if name in unverified else
-                     start[name] + blend * (commanded[name] - start[name])
-                     for name in joint_names}
-        velocities = {name: 0.0 if name in unverified else
-                      blend_speed * (commanded[name] - start[name])
-                      for name in joint_names}
+        path_position, path_slope = bezier(q0, qc, q1, blend)
+        expected = dict(zip(verified_names, path_position))
+        # The preload ramps in linearly along the path. The jaws get their goal directly; their
+        # own position loop does the motion.
+        positions = {name: commanded[name] for name in unverified}
+        velocities = {name: 0.0 for name in unverified}
+        for name, slope in zip(verified_names, path_slope):
+            positions[name] = expected[name] + blend * preload[name]
+            velocities[name] = blend_speed * (slope + preload[name])
         actual, _ = measured.read(joint_names, state_timeout)
         worst_joint = max(verified_names, key=lambda name: abs(expected[name] - actual[name]))
         worst_tracking_error = abs(expected[worst_joint] - actual[worst_joint])
