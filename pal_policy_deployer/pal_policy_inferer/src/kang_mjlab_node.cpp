@@ -1021,7 +1021,9 @@ void publishGraspTarget()
 
 bool updateGraspGoal()
 {
-    if (grasp_base_object_frame.empty() || grasp_goal_latched) return true;
+    // Dry run follows the base object, so the start check sees where it is now; the policy
+    // latches it once at its start.
+    if (grasp_base_object_frame.empty() || (grasp_goal_latched && !grasp_dry_run)) return true;
     geometry_msgs::TransformStamped tf;
     try {
         tf = grasp_tf_buffer->lookupTransform(grasp_base_link, grasp_base_object_frame, ros::Time(0));
@@ -1038,6 +1040,7 @@ bool updateGraspGoal()
         return false;
     }
     grasp_goal_b = {t.x + grasp_goal_offset_b[0], t.y + grasp_goal_offset_b[1], t.z + grasp_goal_offset_b[2]};
+    if (grasp_goal_latched) return true;
     grasp_goal_latched = true;
     ROS_INFO("Grasp goal latched from %s: [%.3f, %.3f, %.3f] in %s", grasp_base_object_frame.c_str(),
              grasp_goal_b[0], grasp_goal_b[1], grasp_goal_b[2], grasp_base_link.c_str());

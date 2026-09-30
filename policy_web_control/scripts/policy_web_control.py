@@ -69,6 +69,7 @@ button.link{background:none;padding:8px 0;margin:4px 0;font-size:.9em;font-weigh
 <div id="rec" class="box"></div>
 <div id="ready"></div>
 <pre id="log"></pre>
+<button id="reregister" class="link" onclick="if(confirm('Re-register tracking?'))send('reregister')">Re-register tracking</button>
 <script>
 async function send(cmd){
   try{const r=await fetch('/'+cmd,{method:'POST'});const j=await r.json();if(!j.success)alert(j.message);}
@@ -238,14 +239,33 @@ setInterval(poll,1000);poll();
 """
 
 
+class EmptyRequest(rospy.AnyMsg):
+    """Raw request for tracking_ros/Reregister, whose type is not installed here.
+
+    Assumes the request is a single string field; all-default is one empty string (4 zero bytes).
+    """
+    def __init__(self):
+        super(EmptyRequest, self).__init__()
+        self._buff = b"\x00\x00\x00\x00"
+
+
+class AnyService(object):
+    """Service type wildcard: empty request, raw reply. Used where the real type is not installed."""
+    _type = "*"
+    _md5sum = "*"
+    _request_class = EmptyRequest
+    _response_class = rospy.AnyMsg
+
+
 class SupervisorClient(object):
-    def __init__(self, supervisor, recorder):
+    def __init__(self, supervisor, recorder, reregister):
         self.state = "no supervisor"
         self.log = collections.deque(maxlen=300)
         self._readiness = None
         self._readiness_stamp = 0.0
         self._services = {name: rospy.ServiceProxy(supervisor + "/" + name, Trigger)
                           for name in ("start", "stop", "go_home")}
+        self._services["reregister"] = rospy.ServiceProxy(reregister, AnyService)
         rospy.Subscriber(supervisor + "/state", String, self._on_state, queue_size=1)
         rospy.Subscriber(supervisor + "/log", String, self._on_log, queue_size=100)
         rospy.Subscriber(supervisor + "/readiness", String, self._on_readiness, queue_size=1)
@@ -272,6 +292,9 @@ class SupervisorClient(object):
 
     def call(self, name):
         try:
+            if name == "reregister":
+                self._services[name](EmptyRequest())
+                return {"success": True, "message": "reregister called"}
             response = self._services[name]()
         except (rospy.ServiceException, rospy.ROSException) as error:
             return {"success": False, "message": "{} failed: {}".format(name, error)}
@@ -327,7 +350,7 @@ def make_handler(client):
 
         def do_POST(self):
             name = self.path.lstrip("/")
-            if name in ("start", "stop", "go_home"):
+            if name in ("start", "stop", "go_home", "reregister"):
                 self._reply(200, json.dumps(client.call(name)))
                 return
             if name not in ("record", "label"):
@@ -359,7 +382,9 @@ def main():
     rospy.init_node("policy_web_control")
     port = rospy.get_param("~port", 8000)
     client = SupervisorClient(rospy.get_param("~supervisor", "/pal_policy_supervisor"),
-                              rospy.get_param("~recorder", "/episode_recorder"))
+                              rospy.get_param("~recorder", "/episode_recorder"),
+                              rospy.get_param("~reregister_service",
+                                              "/tracking_fp_plus_so3_trt_node/trigger_reregister"))
     server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(client))
     thread = threading.Thread(target=server.serve_forever)
     thread.daemon = True
