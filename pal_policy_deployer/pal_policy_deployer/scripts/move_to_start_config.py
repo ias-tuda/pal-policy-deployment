@@ -128,8 +128,8 @@ def move():
     state_topic = rospy.get_param("~state_topic", "/subscriber_controller/actual_js_state")
     command_topic = rospy.get_param("~command_topic", "/pal_grasp/desired_state_uncompensated")
     rate_hz = positive_param("rate_hz", 50.0)
-    max_speed = positive_param("max_speed", 0.15)
-    min_duration = positive_param("min_duration", 2.0)
+    max_speed = positive_param("max_speed", 0.35)
+    min_duration = positive_param("min_duration", 1.5)
     tolerance = positive_param("position_tolerance", 0.05)
     velocity_tolerance = positive_param("velocity_tolerance", 0.05)
     state_timeout = positive_param("state_timeout", 0.25)
@@ -162,7 +162,8 @@ def move():
     ensure_exclusive_publisher(command_topic)
 
     max_delta = max(abs(targets[name] - start[name]) for name in joint_names)
-    duration = max(min_duration, 1.5 * max_delta / max_speed)
+    # Minimum-jerk (quintic) profile: peak speed is 1.875 * delta / duration.
+    duration = max(min_duration, 1.875 * max_delta / max_speed)
     rospy.logwarn("Moving %d joints to %s over %.2f s; max change %.3f",
                   len(joint_names), path, duration, max_delta)
     for name in joint_names:
@@ -173,8 +174,8 @@ def move():
     while not rospy.is_shutdown():
         elapsed = time.monotonic() - start_time
         u = min(1.0, elapsed / duration)
-        blend = u * u * (3.0 - 2.0 * u)
-        blend_speed = 6.0 * u * (1.0 - u) / duration
+        blend = u * u * u * (10.0 + u * (-15.0 + 6.0 * u))
+        blend_speed = 30.0 * u * u * (1.0 - u) * (1.0 - u) / duration
         expected = {name: start[name] + blend * (targets[name] - start[name])
                     for name in joint_names}
         # The jaws get their goal directly; their own position loop does the motion.
