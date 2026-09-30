@@ -194,6 +194,9 @@ std::vector<std::string> grasp_tip_links;
 std::vector<GraspTcp> grasp_tcps;
 std::vector<std::string> grasp_chain_joint_names;  // union of all TCP chains
 KDL::Vector grasp_tcp_offset;
+// tcp_quat_b sign convention of the training code: largest_positive (mjlab quat_from_matrix)
+// or w_positive.
+bool grasp_tcp_quat_w_positive = false;
 std::vector<double> grasp_chain_q;
 // action_mode delta_joint_position (pal_mjlab DeltaJointPositionAction):
 // target = clip(target + action_scale * clip(action, -1, 1), target_lower, target_upper).
@@ -207,6 +210,19 @@ std::vector<double> grasp_target_lower;
 std::vector<double> grasp_target_upper;
 std::vector<double> grasp_target_preload;
 std::vector<double> grasp_target;
+// action_mode joint_position (pal_mjlab JointPositionAction with use_default_offset), per step:
+// target = default_joint_pos + scale * action (no [-1, 1] clip), clipped to
+// actions.joint_pos.clip, moved by at most rate_limit from the previous target, then for
+// effort_band_joints kept within q + (D/K) qd +- effort_band_fraction * effort_limit / K
+// (measured q and qd; no gravity term), then for range_clip_joints clamped to
+// target_lower/upper (the hard joint range). The previous target starts at default_joint_pos.
+bool grasp_absolute_actions = false;
+std::vector<double> grasp_clip_lower;
+std::vector<double> grasp_clip_upper;
+std::vector<bool> grasp_range_clip;
+std::vector<double> grasp_rate_limit;
+std::vector<double> grasp_effort_band;       // half width, rad; inf outside effort_band_joints
+std::vector<double> grasp_effort_band_lead;  // D / K, s
 // Optional pal_mjlab BinaryJawAction term after the delta joints in the action vector: an
 // action > 0 moves the jaw target toward closed, otherwise toward open, by at most
 // gripper_rate per step. The target starts at the measured position clamped to the stroke.
@@ -226,6 +242,9 @@ std::vector<float> grasp_last_action;
 std::vector<double> grasp_object_b;
 std::vector<double> grasp_goal_b;
 double grasp_object_yaw_b = 0.0;
+// With object_yaw_symmetry n > 1 the tracked yaw is folded into [-pi/n, pi/n), e.g. 4 for a
+// cube whose training yaw covered only +-pi/4.
+int grasp_object_yaw_symmetry = 1;
 // Jaw point (midpoint of the fingertip sites) in the first tip link frame, for jaw_to_object_b
 // and object_yaw_to_jaw: (jaw_mid_xy, z) with z interpolated in jaw_mid_z over jaw_mid_q of
 // jaw_joint. The jaw closing axis is the tip link's +x.
@@ -977,7 +996,7 @@ bool buildGraspObservation(std::vector<float>& obs)
                 const double q[] = {w, x, y, z};
                 const double largest = *std::max_element(std::begin(q), std::end(q),
                     [](double a, double b) { return std::abs(a) < std::abs(b); });
-                const double sign = largest < 0.0 ? -1.0 : 1.0;
+                const double sign = (grasp_tcp_quat_w_positive ? w : largest) < 0.0 ? -1.0 : 1.0;
                 obs.insert(obs.end(), {static_cast<float>(sign * w), static_cast<float>(sign * x),
                                        static_cast<float>(sign * y), static_cast<float>(sign * z)});
             }
@@ -997,8 +1016,10 @@ void seedGraspTarget()
 {
     grasp_target.resize(grasp_action_indices.size());
     for (size_t k = 0; k < grasp_action_indices.size(); ++k) {
-        grasp_target[k] = std::min(grasp_target_upper[k], std::max(grasp_target_lower[k],
-            grasp_position[grasp_action_indices[k]] + grasp_target_preload[k]));
+        // joint_position starts from the default pose, as pal_mjlab's rate limiter at reset.
+        grasp_target[k] = grasp_absolute_actions ? grasp_default_joint_pos[grasp_action_indices[k]]
+            : std::min(grasp_target_upper[k], std::max(grasp_target_lower[k],
+                  grasp_position[grasp_action_indices[k]] + grasp_target_preload[k]));
     }
     grasp_gripper_target.resize(grasp_gripper_indices.size());
     for (size_t k = 0; k < grasp_gripper_indices.size(); ++k) {
@@ -1083,6 +1104,10 @@ bool updateGraspObject()
     if (!std::isfinite(t.x) || !std::isfinite(t.y) || !std::isfinite(t.z) || !std::isfinite(yaw))
         return false;
     grasp_object_b = {t.x, t.y, t.z};
+    if (grasp_object_yaw_symmetry > 1) {
+        const double period = 2.0 * M_PI / grasp_object_yaw_symmetry;
+        yaw -= period * std::floor(yaw / period + 0.5);
+    }
     grasp_object_yaw_b = yaw;
     return true;
 }
@@ -1098,7 +1123,8 @@ void graspInferenceTimer(const ros::TimerEvent&)
         return;
     }
     // Dry run re-seeds every step so joint_target_rel follows the robot for the start check.
-    if (grasp_delta_actions && (!grasp_target_seeded || grasp_dry_run)) seedGraspTarget();
+    if ((grasp_delta_actions || grasp_absolute_actions) && (!grasp_target_seeded || grasp_dry_run))
+        seedGraspTarget();
 
     std::vector<float> obs;
     if (!buildGraspObservation(obs)) return;
@@ -1139,6 +1165,23 @@ void graspInferenceTimer(const ros::TimerEvent&)
                                                                         : grasp_gripper_open[k];
             grasp_gripper_target[k] += std::min(grasp_gripper_rate[k],
                 std::max(-grasp_gripper_rate[k], goal - grasp_gripper_target[k]));
+        }
+        publishGraspTarget();
+    } else if (grasp_absolute_actions) {
+        for (size_t k = 0; k < grasp_target.size(); ++k) {
+            const size_t j = grasp_action_indices[k];
+            double target = grasp_default_joint_pos[j] + grasp_action_scale[k] * output[k];
+            target = std::min(grasp_clip_upper[k], std::max(grasp_clip_lower[k], target));
+            target = std::min(grasp_target[k] + grasp_rate_limit[k],
+                              std::max(grasp_target[k] - grasp_rate_limit[k], target));
+            if (std::isfinite(grasp_effort_band[k])) {
+                const double centre = grasp_position[j] + grasp_effort_band_lead[k] * grasp_velocity[j];
+                target = std::min(centre + grasp_effort_band[k],
+                                  std::max(centre - grasp_effort_band[k], target));
+            }
+            if (grasp_range_clip[k])
+                target = std::min(grasp_target_upper[k], std::max(grasp_target_lower[k], target));
+            grasp_target[k] = target;
         }
         publishGraspTarget();
     }
@@ -1268,13 +1311,154 @@ bool loadGraspGripperRate(const std::string& model_path)
     return true;
 }
 
+bool matchesAny(const std::string& joint, const YAML::Node& patterns)
+{
+    if (!patterns || patterns.IsNull()) return false;
+    for (const auto& pattern : patterns)
+        if (std::regex_match(joint, std::regex(pattern.as<std::string>()))) return true;
+    return false;
+}
+
+// The actuator entries (target_names_expr, stiffness, effort_limit) anywhere in env.yaml.
+void findActuatorEntries(const YAML::Node& node, std::vector<YAML::Node>& entries)
+{
+    if (node.IsMap()) {
+        if (node["target_names_expr"] && node["stiffness"] && node["effort_limit"]) entries.push_back(node);
+        for (const auto& child : node) findActuatorEntries(child.second, entries);
+    } else if (node.IsSequence()) {
+        for (const auto& child : node) findActuatorEntries(child, entries);
+    }
+}
+
+// JointPositionAction's clip, range_clip_joints, rate_limit and effort_band_joints from the
+// model's params/env.yaml. The effort band uses the stiffness, damping and effort_limit of the
+// joint's actuator entry; training's torque budget is effort_band_fraction of effort_limit (the
+// joint actfrcrange, which env.yaml does not record).
+bool loadGraspJointPositionAction(const std::string& model_path, double effort_band_fraction)
+{
+    const std::string env_path = (fs::path(model_path).parent_path() / "params" / "env.yaml").string();
+    const double inf = std::numeric_limits<double>::infinity();
+    try {
+        const YAML::Node env = YAML::LoadFile(env_path);
+        const YAML::Node action = env["actions"]["joint_pos"];
+        if (!action) throw std::runtime_error("no actions.joint_pos");
+        if (!action["use_default_offset"] || !action["use_default_offset"].as<bool>() ||
+            (action["offset"] && !action["offset"].IsNull() && action["offset"].IsScalar() &&
+             action["offset"].as<double>() != 0.0))
+            throw std::runtime_error("joint_position needs use_default_offset and no offset");
+        if (env["actions"]["gripper"]) throw std::runtime_error("joint_position has no separate gripper term");
+        std::vector<YAML::Node> actuators;
+        findActuatorEntries(env, actuators);
+        grasp_clip_lower.clear();
+        grasp_clip_upper.clear();
+        grasp_range_clip.clear();
+        grasp_rate_limit.clear();
+        grasp_effort_band.clear();
+        grasp_effort_band_lead.clear();
+        for (const auto& joint : grasp_action_joint_names) {
+            double low = -inf, high = inf;
+            const YAML::Node clip = action["clip"];
+            if (clip && clip.IsMap()) {
+                for (const auto& entry : clip) {
+                    if (!std::regex_match(joint, std::regex(entry.first.as<std::string>()))) continue;
+                    low = entry.second[0].as<double>();
+                    high = entry.second[1].as<double>();
+                }
+            } else if (clip && !clip.IsNull()) {
+                throw std::runtime_error("actions.joint_pos.clip must be a map of joint patterns");
+            }
+            grasp_clip_lower.push_back(low);
+            grasp_clip_upper.push_back(high);
+            grasp_range_clip.push_back(matchesAny(joint, action["range_clip_joints"]));
+            grasp_rate_limit.push_back(envJointValue(action["rate_limit"], joint, inf));
+            double band = inf, lead = 0.0;
+            if (matchesAny(joint, action["effort_band_joints"])) {
+                if (!(effort_band_fraction > 0.0))
+                    throw std::runtime_error("the model has effort_band_joints; set effort_band_fraction");
+                std::vector<YAML::Node> matches;
+                for (const auto& entry : actuators)
+                    if (matchesAny(joint, entry["target_names_expr"])) matches.push_back(entry);
+                if (matches.size() != 1)
+                    throw std::runtime_error(joint + " matches " + std::to_string(matches.size()) +
+                                             " actuator entries");
+                const double stiffness = matches[0]["stiffness"].as<double>();
+                band = effort_band_fraction * matches[0]["effort_limit"].as<double>() / stiffness;
+                lead = matches[0]["damping"].as<double>() / stiffness;
+            }
+            grasp_effort_band.push_back(band);
+            grasp_effort_band_lead.push_back(lead);
+            ROS_INFO("  %s: scale %g, clip [%g, %g], range clip %s, rate %g rad/step, effort band %g rad",
+                     joint.c_str(), grasp_action_scale[grasp_clip_lower.size() - 1], low, high,
+                     grasp_range_clip.back() ? "yes" : "no", grasp_rate_limit.back(), band);
+            if (low > high || !(grasp_rate_limit.back() > 0.0) || !(band > 0.0) || !std::isfinite(lead))
+                throw std::runtime_error("invalid clip, rate_limit or effort band for " + joint);
+        }
+    } catch (const std::exception& e) {
+        ROS_ERROR("Could not read the joint position action from %s: %s", env_path.c_str(), e.what());
+        return false;
+    }
+    return true;
+}
+
+// action_mode joint_position: every action joint, the jaw included, is one absolute target.
+bool loadGraspAbsoluteActionConfig(ros::NodeHandle& nh, const std::string& model_path)
+{
+    grasp_absolute_actions = true;
+    std::vector<std::string> gripper_joint_names;
+    if (nh.getParam("gripper_joint_names", gripper_joint_names) && !gripper_joint_names.empty()) {
+        ROS_ERROR("joint_position has no binary jaw; put the jaw in action_joint_names and set "
+                  "gripper_joint_names: []");
+        return false;
+    }
+    grasp_gripper_joint_names.clear();
+    if (!nh.getParam("action_joint_names", grasp_action_joint_names) ||
+        grasp_action_joint_names.size() != static_cast<size_t>(config.action_dim)) {
+        ROS_ERROR("joint_position needs action_joint_names with action_dim=%d values", config.action_dim);
+        return false;
+    }
+    const size_t n = grasp_action_joint_names.size();
+    if (!nh.getParam("target_lower", grasp_target_lower) || grasp_target_lower.size() != n ||
+        !nh.getParam("target_upper", grasp_target_upper) || grasp_target_upper.size() != n) {
+        ROS_ERROR("target_lower and target_upper must have one value per action_joint_names entry");
+        return false;
+    }
+    if (nh.hasParam("action_scale") || nh.hasParam("target_preload")) {
+        ROS_ERROR("joint_position reads the action from the model's params/env.yaml and has no "
+                  "target_preload; remove action_scale and target_preload from the config");
+        return false;
+    }
+    double effort_band_fraction = 0.0;
+    nh.param("effort_band_fraction", effort_band_fraction, 0.0);
+    if (!loadGraspActionScale(model_path) ||
+        !loadGraspJointPositionAction(model_path, effort_band_fraction)) return false;
+    grasp_action_indices.clear();
+    for (size_t k = 0; k < n; ++k) {
+        const auto it = std::find(grasp_joint_names.begin(), grasp_joint_names.end(),
+                                  grasp_action_joint_names[k]);
+        if (it == grasp_joint_names.end()) {
+            ROS_ERROR("Action joint %s is missing from joint_names", grasp_action_joint_names[k].c_str());
+            return false;
+        }
+        grasp_action_indices.push_back(static_cast<size_t>(it - grasp_joint_names.begin()));
+        if (!std::isfinite(grasp_target_lower[k]) || !std::isfinite(grasp_target_upper[k]) ||
+            grasp_action_scale[k] <= 0.0 || grasp_target_lower[k] > grasp_target_upper[k]) {
+            ROS_ERROR("Invalid action scale or target bounds for %s", grasp_action_joint_names[k].c_str());
+            return false;
+        }
+    }
+    nh.param("publish_commands", grasp_publish_commands, false);
+    return true;
+}
+
 bool loadGraspDeltaActionConfig(ros::NodeHandle& nh, const std::string& model_path)
 {
     std::string action_mode;
     nh.param<std::string>("action_mode", action_mode, "raw");
     if (action_mode == "raw") return true;
+    if (action_mode == "joint_position") return loadGraspAbsoluteActionConfig(nh, model_path);
     if (action_mode != "delta_joint_position") {
-        ROS_ERROR("action_mode must be raw or delta_joint_position, not %s", action_mode.c_str());
+        ROS_ERROR("action_mode must be raw, delta_joint_position or joint_position, not %s",
+                  action_mode.c_str());
         return false;
     }
     grasp_delta_actions = true;
@@ -1420,6 +1604,18 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     }
     nh.param<std::string>("object_frame", grasp_object_frame, "");
     nh.param("object_timeout", grasp_object_timeout, 0.5);
+    nh.param("object_yaw_symmetry", grasp_object_yaw_symmetry, 1);
+    std::string tcp_quat_sign;
+    nh.param<std::string>("tcp_quat_sign", tcp_quat_sign, "largest_positive");
+    if (tcp_quat_sign != "largest_positive" && tcp_quat_sign != "w_positive") {
+        ROS_ERROR("tcp_quat_sign must be largest_positive or w_positive, not %s", tcp_quat_sign.c_str());
+        return false;
+    }
+    grasp_tcp_quat_w_positive = tcp_quat_sign == "w_positive";
+    if (grasp_object_yaw_symmetry < 1) {
+        ROS_ERROR("object_yaw_symmetry must be at least 1");
+        return false;
+    }
     if (!grasp_object_frame.empty()) {
         // Tracked path: object values come only from TF, never from mock parameters.
         if (nh.hasParam("mock_object_position_b") || nh.hasParam("mock_object_yaw_b")) {
@@ -1566,7 +1762,7 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
     } else {
         ROS_WARN("Grasp object pose is the fixed mock_object_position_b");
     }
-    if (grasp_delta_actions) {
+    if (grasp_delta_actions || grasp_absolute_actions) {
         grasp_preview_pub = nh.advertise<sensor_msgs::JointState>(preview_topic, 1);
         if (grasp_publish_commands && !grasp_dry_run) {
             grasp_command_pub = nh.advertise<sensor_msgs::JointState>(command_topic, 1);

@@ -20,6 +20,8 @@ While the policy runs, the supervisor stops it (it does not resume) when
   - an observation of ~running_ood_terms (default object_to_goal_b, the object pose relative to
     the fixed goal) lies for ~running_ood_frames consecutive frames outside the box spanned by
     the training start range and 0 (object at the goal), widened by ~running_ood_margin, or
+    (for object_pos_b, the object pose in the base frame) by the training start ranges of
+    object_pos_b and goal_pos_b, or
   - no observation arrives for ~running_timeout s (the inferer skips steps while the joint
     state or the object TF is stale), or none within ~startup_timeout s of the start, or
   - the object TF stamps are off this host's clock (ObjectStampCheck), which also blocks the start.
@@ -140,15 +142,22 @@ class RunGuard(object):
 
     def __init__(self, terms, distribution, topic, ood_terms, margin, frames, timeout, startup_timeout):
         self._bounds = []  # (label, index, low, high)
+        term_stats = dict(zip(terms, (stats for _, stats in distribution)))
         offset = 0
         for term, (_, stats) in zip(terms, distribution):
             dim = len(stats["mean"])
             for i in range(dim):
                 if term in ood_terms:
                     label = "{} {}".format(term, "xyz"[i] if dim == 3 else i)
-                    # From anywhere in the start range the object may move to the goal (0).
-                    self._bounds.append((label, offset + i, min(stats["min"][i], 0.0) - margin,
-                                         max(stats["max"][i], 0.0) + margin))
+                    # From anywhere in the start range the object may move to the goal: 0 in
+                    # object_to_goal_b, the goal's start range in object_pos_b.
+                    low, high = stats["min"][i], stats["max"][i]
+                    if term == "object_to_goal_b":
+                        low, high = min(low, 0.0), max(high, 0.0)
+                    elif term == "object_pos_b" and "goal_pos_b" in term_stats:
+                        goal = term_stats["goal_pos_b"]
+                        low, high = min(low, goal["min"][i]), max(high, goal["max"][i])
+                    self._bounds.append((label, offset + i, low - margin, high + margin))
             offset += len(stats["mean"])
         missing = set(ood_terms) - set(terms)
         if missing:
@@ -412,12 +421,24 @@ def main():
         "roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch",
         "config:=" + shlex.quote(config_path), "start_controllers:=false",
         "joint_state_topic:=/joint_states", rospy.get_param("~launch_args", "")])
+    # A robot whose controllers run without the gravity bridge names a launch file that brings
+    # the bridge for the move (the robot's supervisor: home_launch); ~home_args are then its args.
+    home_launch = setting("home_launch", "", config, task)
+    if home_launch:
+        # A private param of the move (_position_tolerance:=0.1) is the launch arg of that name.
+        args = [arg[1:] if arg.startswith("_") else arg
+                for arg in shlex.split(rospy.get_param("~home_args", ""))]
+        home = " ".join([
+            "roslaunch pal_policy_deployer", home_launch, "config:=" + shlex.quote(config_path),
+            "start_config_path:=" + shlex.quote(start_config)] + [shlex.quote(arg) for arg in args])
+    else:
+        home = " ".join([
+            "rosrun pal_policy_deployer move_to_start_config.py",
+            "_start_config_path:=" + shlex.quote(start_config), rospy.get_param("~home_args", "")])
     commands = {
         "policy": rospy.get_param("~deploy_command", inferer + " publish_commands:=true"),
         "observer": rospy.get_param("~observer_command", inferer + " dry_run:=true"),
-        "home": rospy.get_param("~home_command", " ".join([
-            "rosrun pal_policy_deployer move_to_start_config.py",
-            "_start_config_path:=" + shlex.quote(start_config), rospy.get_param("~home_args", "")])),
+        "home": rospy.get_param("~home_command", home),
     }
     for name, command in sorted(commands.items()):
         rospy.loginfo("%s: %s", name, command)

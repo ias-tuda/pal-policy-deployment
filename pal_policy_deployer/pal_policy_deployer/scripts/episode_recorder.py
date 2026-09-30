@@ -32,8 +32,8 @@ as a distinct task.
 
 The recorder also logs gaps in ~observation_topic (e.g. object tracking lost), because
 oopsie-data excludes episodes with missing frames unless the failure came first. From the
-object_to_goal_b term of the same observation it tracks the object's distance to the goal
-(final, closest, and time within ~goal_threshold, 5 cm as in training) as a labelling aid.
+object_to_goal_b term (or the object_pos_b and goal_pos_b terms) of the same observation it
+tracks the object's distance to the goal (final, closest, and time within ~goal_threshold, 5 cm as in training) as a labelling aid.
 """
 import datetime
 import glob
@@ -86,17 +86,21 @@ def read_json(path):
         return None
 
 
-def goal_term_index(config, distribution_path, term="object_to_goal_b"):
-    """Index of the 3 values of term in the observation, or None without that term."""
+def goal_term_index(config, distribution_path):
+    """(goal, object): the observation indices of the goal and object positions, each 3 values,
+    so that the object's distance to the goal is |goal - object|. object is None when the
+    observation has object_to_goal_b (goal minus object). None without the terms."""
     terms = config.get("observation_terms", [])
-    if term not in terms:
-        return None
     # The config names the terms, the start distribution has their sizes (see RunGuard).
+    offsets = {}
     offset = 0
     for name, (_, stats) in zip(terms, load_distribution(distribution_path)):
-        if name == term:
-            return offset
+        offsets[name] = offset
         offset += len(stats["mean"])
+    if "object_to_goal_b" in offsets:
+        return offsets["object_to_goal_b"], None
+    if "goal_pos_b" in offsets and "object_pos_b" in offsets:
+        return offsets["goal_pos_b"], offsets["object_pos_b"]
     return None
 
 
@@ -187,10 +191,11 @@ class Recorder(object):
             episode["last_observation"] = now
 
     def _track_goal(self, episode, data, now, last):
-        index = self._goal_index
-        if index is None or len(data) < index + 3:
+        if self._goal_index is None or len(data) < max(i for i in self._goal_index if i is not None) + 3:
             return
-        distance = math.sqrt(sum(value * value for value in data[index:index + 3]))
+        goal, obj = self._goal_index
+        distance = math.sqrt(sum((data[goal + k] - (data[obj + k] if obj is not None else 0.0)) ** 2
+                                 for k in range(3)))
         goal = episode["goal"]
         if goal is None:
             episode["goal"] = {"threshold_m": self._goal_threshold, "final_m": distance,

@@ -1,0 +1,62 @@
+# A task: what the robot is asked to do with a robot part. The file name is the task name and
+# the recording folder, <record_dir>/<task name>/. `robot` is the robot part and how it is
+# driven (config/robots/). Everything below overrides it; `model:` and `supervisor:` are merged
+# into it key by key.
+robot: left_arm_nogravcomp
+instruction: Pick up the cube and place it at the goal
+# oopsie-data counts a different instruction or scene layout as a distinct task (at most 200
+# episodes count per task), so add a task file when either changes.
+# TODO: the training cube start range (base_link x 0.32-0.48, y 0.18-0.37) is further left than
+# grasp-cube's; name the arrangement that matches it.
+scene: {arrangement: A}
+
+# The model contract. It must match the robot part: joint set and order, and gravity
+# compensation (trained without it, so the robot is left_arm_nogravcomp). Order matters.
+model:
+  # pp_RCTP_s3 (pal_mjlab kangaroo-pick-and-place): left arm and left jaw, absolute joint
+  # targets, observations in base_link (38). Trained without gravity compensation (G20 gains).
+  model_path: /catkin_ws/src/models/siwei-pick-and-place/pp_RCTP_s3/model_4999.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw_b, goal_pos_b]
+  action_dim: 8
+  action_mode: joint_position
+  # Training's effort band torque is the joint actfrcrange, 0.7 of the actuator effort_limit
+  # (EFFORT=CTP: 35 Nm on arm 1-2, 17.5 Nm on arm 3-7); env.yaml records only effort_limit.
+  effort_band_fraction: 0.7
+  # The training ee_orientation_b makes w >= 0.
+  tcp_quat_sign: w_positive
+
+# Where things are, in base_link. The object pose comes from this TF frame (its origin must be
+# the cube centre).
+object_frame: cube_1
+# mock_object_position_b: [0.400, 0.270, -0.060]   # instead of object_frame: a fixed pose
+# mock_object_yaw_b: 0.0
+# The training object_yaw is the raw yaw, but the spawn covered only +-pi/4; fold the tracked
+# yaw of the symmetric cube into that range.
+object_yaw_symmetry: 4
+# The goal is the cube centre resting on the table: training samples x [0.42, 0.50],
+# y [0.04, 0.12], z [-0.070, -0.050] (the table top plus half the cube) once per episode.
+# z must match where the tracked cube_1 centre rests on this table.
+goal_position_b: [0.46, 0.08, -0.06]
+# Beyond object_timeout the inferer skips steps and the supervisor stops the policy after
+# running_timeout. Training saw a 0-2 step lag on the object terms.
+object_timeout: 2.0
+
+supervisor:
+  # Start is blocked only when a feature is outside the training [min, max] widened by these
+  # margins; smaller misses (e.g. an imprecise start pose) are shown as notes.
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    tcp_pos_b: 0.03          # m
+    tcp_quat_b: 0.1
+    object_pos_b: 0.03       # m
+    object_yaw_b: 0.2
+    goal_pos_b: 0.02         # m
+  # While the policy runs, stop it when the object position leaves the box of the training
+  # start ranges of the object and the goal, widened by the margin, for running_ood_frames
+  # frames, or when no observation (stale joint state or object TF) arrives. The margin only
+  # catches object tracking errors (FoundationPose placing the cube far away) and covers the
+  # lift, not a cube the policy pushes or drops a few cm outside the start range.
+  running_ood_terms: [object_pos_b]
+  running_ood_margin: 0.3    # m

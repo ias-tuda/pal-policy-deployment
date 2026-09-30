@@ -2,6 +2,7 @@
   <arg name="task" default="grasp-cube" doc="Task file in config/tasks/, for its robot and model." />
   <arg name="robot" default="" doc="Replaces the task's robot (a name in config/robots/ or a path)." />
   <arg name="config" default="" doc="A deployment config file instead of task and robot." />
+  <arg name="gravity_bridge" default="true" doc="false for a robot without gravity compensation (left_arm_nogravcomp): its policy commands the controller directly, and the home move starts its own bridge." />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
     <arg name="local_joint_control_type" value="no_control" />
@@ -30,7 +31,7 @@
     <arg name="ns" value="subscriber_controller" />
   </include>
 
-  <include file="$(find pal_gravity_compensation)/launch/gravity_compensation.launch" />
+  <include if="$(arg gravity_bridge)" file="$(find pal_gravity_compensation)/launch/gravity_compensation.launch" />
 
   <node pkg="pal_policy_deployer" type="spawn_grasp_controller.py"
         name="spawn_grasp_controller" output="screen" required="true">

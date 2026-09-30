@@ -1,0 +1,49 @@
+# A robot part and how it is driven: the left arm and left jaw with absolute joint-position
+# actions and without gravity feedforward (the PD error of the targets holds the arm up, as in
+# a model trained without gravity compensation). What the policy does with it (the model, the
+# object, the goal) is set by the task in config/tasks/. Order matters.
+#
+# The gravity bridge must not run while the policy does: it republishes its last target to the
+# same controller topic. Start the controllers with gravity_bridge:=false; the move to the
+# start pose brings its own bridge (kang_grasp_move_to_start.launch), which exits with the move.
+gravity_compensation: false
+
+joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+              gripper_left_finger_joint]
+arm_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+# joint_vel covers the arm only; last_action is the raw, unclipped policy output.
+joint_vel_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+
+# JointPositionAction on all 8 actions, the jaw included (no BinaryJawAction). scale, clip,
+# rate_limit, range_clip_joints and effort_band_joints are read from the model's params/env.yaml.
+action_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                     gripper_left_finger_joint]
+gripper_joint_names: []
+# Hard joint ranges (MJCF jnt_range), the bounds of mjlab's range clip; applied to the
+# range_clip_joints of env.yaml only (the arm). The jaw is bounded by the env.yaml clip.
+target_lower: [-2.61799, -1.13446, -2.61799, -1.13446, -2.61799, -1.88496, -2.61799, 0.0]
+target_upper: [2.61799, 2.44346, 2.61799, 2.44346, 2.61799, 3.00197, 2.61799, 0.95]
+command_topic: /subscriber_controller/desired_state   # straight to the controller, no bridge
+preview_topic: /pal_policy/desired_state
+publish_commands: false
+
+# Joints the spawner puts under direct_impedance_control with the env.yaml gains. The jaw runs
+# in DirectPositionControl instead.
+impedance_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+
+robot_description: robot_description
+base_link: base_link
+tip_link: arm_left_7_link
+tcp_offset: [0.0, 0.0, 0.148]   # site tcp_left in arm_left_7_link, no rotation
+joint_state_topic: /joint_states
+action_topic: /pal_policy/raw_actions
+policy_rate: 50.0
+state_timeout: 0.1
+
+# Supervisor defaults for this robot part (a task's `supervisor:` block or a ROS param overrides).
+supervisor:
+  running_ood_frames: 3
+  running_timeout: 1.0       # s
+  startup_timeout: 20.0      # s
+  # The home move needs the gravity bridge, which the controllers launch does not start here.
+  home_launch: kang_grasp_move_to_start.launch
