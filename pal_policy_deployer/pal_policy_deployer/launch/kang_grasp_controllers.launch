@@ -1,5 +1,6 @@
 <launch>
-  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_cube.yaml" />
+  <arg name="task" default="grasp-cube" doc="Task file in config/tasks/, for its profile." />
+  <arg name="profile" default="" doc="Replaces the task's profile (a name in config/profiles/ or a path)." />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
     <arg name="local_joint_control_type" value="no_control" />
@@ -32,6 +33,7 @@
 
   <node pkg="pal_policy_deployer" type="spawn_grasp_controller.py"
         name="spawn_grasp_controller" output="screen" required="true">
+    <param name="task" value="$(arg task)" />
     <param name="profile" value="$(arg profile)" />
   </node>
 </launch>

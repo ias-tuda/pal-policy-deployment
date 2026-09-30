@@ -5,10 +5,10 @@ The episodes are raw: a rosbag plus JSON sidecars. A converter writes the oopsie
 format from them later. While recording is enabled, every run of the supervisor's policy job
 is one episode, from the state "policy" until the state leaves it (STOP, guard trip, exit).
 
-Layout under ~record_dir:
-  <YYYY-MM-DD>/<episode_id>/                labelled or not yet labelled episodes
-  excluded/<reason>/<YYYY-MM-DD>/<episode_id>/  not the policy's fault (e.g. tracking lost)
-  discarded/<YYYY-MM-DD>/<episode_id>/      bad recordings
+Layout under ~record_dir (tags.json is shared by all tasks):
+  <task>/<YYYY-MM-DD>/<episode_id>/                labelled or not yet labelled episodes
+  <task>/excluded/<reason>/<YYYY-MM-DD>/<episode_id>/  not the policy's fault (e.g. tracking lost)
+  <task>/discarded/<YYYY-MM-DD>/<episode_id>/      bad recordings
 Each episode dir: episode.bag, meta.json, label.json (after labelling), params.yaml (the whole
 parameter server at the start, with robot_description and the controller gains), policy_env.yaml
 (the model's params/env.yaml) and calibration_<camera>.yaml (the latest camera calibration).
@@ -24,8 +24,10 @@ Topics:
            additional_notes.
   ~status  std_msgs/String JSON, latched, 1 Hz: enabled, recording, the latest episode, the
            instruction and scene, the counts for the instruction and the last message
-Params ~instruction and ~scene (a dict, e.g. {arrangement: A}) change rarely, so they are set in
-the launch file, not on the page. oopsie-data counts a different instruction or scene layout
+Params ~task (the task file name in config/tasks/, also the folder name under ~record_dir,
+e.g. "grasp-cube"; its instruction and scene are the defaults), ~instruction and ~scene
+(a dict, e.g. {arrangement: A}) override the task file. They change rarely, so they are set in
+the task file or the launch file, not on the page. oopsie-data counts a different instruction or scene layout
 as a distinct task.
 
 The recorder also logs gaps in ~observation_topic (e.g. object tracking lost), because
@@ -54,6 +56,7 @@ from std_srvs.srv import SetBool, SetBoolResponse
 
 from check_start_distribution import load_distribution
 from policy_supervisor import Job
+from task_config import node_config
 
 OUTCOMES = ["success", "success_suboptimal", "success_side_effect", "failure"]
 CATEGORIES = ["reaching", "grasp", "manipulation", "sequencing_semantic", "collision", "hardware",
@@ -109,10 +112,11 @@ def classify_stop(reason):
 
 
 class Recorder(object):
-    def __init__(self, root, supervisor, profile_path, topics, instruction, scene, operator,
+    def __init__(self, root, task, supervisor, profile_path, topics, instruction, scene, operator,
                  observation_topic, gap_threshold, max_duration, calibration_camera,
                  goal_index, goal_threshold):
-        self._root = root
+        self._root = os.path.join(root, task)
+        self._task = task
         self._profile_path = profile_path
         with open(profile_path) as stream:
             self._profile_text = stream.read()
@@ -134,7 +138,7 @@ class Recorder(object):
         self._latest = None   # The latest finished episode: {"dir", "meta", "label"}
         self._message = ""
         self._counts = {}
-        self._tags_path = os.path.join(root, "tags.json")
+        self._tags_path = os.path.join(root, "tags.json")  # Shared by all tasks.
         self._tags = read_json(self._tags_path) or []
         self._status_pub = rospy.Publisher("~status", String, queue_size=1, latch=True)
         rospy.Service("~set_enabled", SetBool, self._set_enabled)
@@ -222,6 +226,7 @@ class Recorder(object):
         meta = {
             "episode_id": episode_id,
             "session": session,
+            "task": self._task,
             "timestamp": time.time(),
             "operator_name": self._operator,
             "language_instruction": self._instruction,
@@ -484,9 +489,11 @@ def main():
     root = os.path.expanduser(rospy.get_param("~record_dir", "/catkin_ws/ias-nas/home/oopsie-data"))
     if not os.path.isdir(root):
         os.makedirs(root)
-    profile_path = rospy.get_param("~profile")
-    with open(profile_path) as stream:
-        profile = yaml.safe_load(stream)
+    task, profile_path, profile = node_config()
+    if task is None:
+        raise SystemExit("episode_recorder needs ~task (config/tasks/<task>.yaml)")
+    scene = dict(task.get("scene") or {})
+    scene.update(rospy.get_param("~scene", {}))
     policy_rate = float(profile.get("policy_rate", 50.0))
     # The same start distribution as policy_supervisor's.
     distribution_path = (rospy.get_param("~distribution_path", "") or os.path.join(
@@ -497,10 +504,10 @@ def main():
     except (IOError, OSError, ValueError, KeyError) as error:
         rospy.logwarn("no goal distance: %s", error)
     recorder = Recorder(
-        root, rospy.get_param("~supervisor", "/pal_policy_supervisor"), profile_path,
+        root, task["name"], rospy.get_param("~supervisor", "/pal_policy_supervisor"), profile_path,
         rospy.get_param("~topics", DEFAULT_TOPICS),
-        rospy.get_param("~instruction", "Grasp the cube and move it to the goal"),
-        rospy.get_param("~scene", {}),
+        rospy.get_param("~instruction", "") or task["instruction"],
+        scene,
         rospy.get_param("~operator", "operator1"),
         rospy.get_param("~observation_topic", profile.get("observation_topic", "/pal_policy/observation")),
         # A gap is a pause of more than this many policy periods.

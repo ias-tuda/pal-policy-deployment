@@ -12,6 +12,7 @@ import re
 
 import rospy
 import yaml
+from task_config import resolve
 from controller_manager_msgs.srv import LoadController, SwitchController, UnloadController
 
 
@@ -67,7 +68,7 @@ def load_gains(profile_path):
 
 def main():
     rospy.init_node("spawn_grasp_controller")
-    env_path, gains = load_gains(rospy.get_param("~profile"))
+    env_path, gains = load_gains(resolve(rospy.get_param("~task", ""), rospy.get_param("~profile", ""))[1])
     for joint, (stiffness, damping) in gains.items():
         namespace = "/{}/joints/{}/impedance_params".format(CONTROLLER, joint)
         rospy.set_param(namespace + "/stiffness_factor", stiffness)

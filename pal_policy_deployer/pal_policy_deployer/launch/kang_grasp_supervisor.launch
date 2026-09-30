@@ -1,60 +1,42 @@
 <launch>
   <!-- Start the grasp controllers, then start, stop and home the grasp policy on ROS service
        calls (~start, ~stop, ~go_home), and publish on ~readiness whether it may start. -->
-  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_leftarm_gc.yaml" />
+  <arg name="task" default="grasp-cube" doc="Task file in config/tasks/; it names the profile, the instruction and the scene, and the record folder." />
+  <arg name="profile" default="" doc="Replaces the task's profile (a name in config/profiles/ or a path)." />
   <arg name="start_config_path" default="" doc="Empty uses deployment_start_config.json beside the profile's model." />
   <arg name="launch_args" default="" doc="Extra args for kang_grasp_upperbody_deployer.launch." />
   <arg name="home_args" default="_position_tolerance:=0.1" doc="Extra params for move_to_start_config.py." />
   <arg name="require_ready" default="true" doc="Refuse ~start while ~readiness is not ready." />
   <arg name="start_controllers" default="false" doc="false when kang_grasp_controllers.launch already runs." />
   <arg name="record" default="true" doc="Run episode_recorder.py; recording itself is switched on the web page." />
-  <arg name="record_dir" default="/catkin_ws/ias-nas/home/oopsie-data" />
+  <arg name="record_dir" default="/catkin_ws/ias-nas/home/oopsie-data" doc="Episodes go to record_dir/task/date/episode." />
   <arg name="operator" default="operator1" doc="Pseudonym in the oopsie-data metadata; keep it the same across sessions." />
-  <arg name="instruction" default="Grasp the cube and move it to the goal" doc="Task instruction in the episode metadata." />
-  <arg name="arrangement" default="A" doc="Name of the initial object arrangement, in the episode metadata." />
+  <arg name="instruction" default="" doc="Replaces the task's instruction in the episode metadata." />
+  <arg name="arrangement" default="" doc="Replaces the task's scene arrangement in the episode metadata." />
 
   <include if="$(arg start_controllers)" file="$(find pal_policy_deployer)/launch/kang_grasp_controllers.launch">
+    <arg name="task" value="$(arg task)" />
     <arg name="profile" value="$(arg profile)" />
   </include>
 
   <node pkg="pal_policy_deployer" type="policy_supervisor.py" name="pal_policy_supervisor" output="screen">
+    <param name="task" value="$(arg task)" />
     <param name="profile" value="$(arg profile)" />
     <param name="start_config_path" value="$(arg start_config_path)" />
     <param name="launch_args" value="$(arg launch_args)" />
     <param name="home_args" value="$(arg home_args)" />
     <param name="require_ready" value="$(arg require_ready)" />
-    <!-- Start is blocked only when a feature is outside the training [min, max] widened by
-         these margins; smaller misses (e.g. an imprecise start pose) are shown as notes. -->
-    <param name="ood_margin" value="0.05" />
-    <rosparam param="ood_margins">
-      joint_pos_rel: 0.15      # rad
-      joint_vel: 0.3           # rad/s
-      joint_target_rel: 0.15   # rad
-      jaw_to_object_b: 0.03    # m
-      object_yaw_to_jaw: 0.2
-      object_to_goal_b: 0.03   # m
-    </rosparam>
-    <!-- While the policy runs, stop it when the object pose (relative to the fixed goal) leaves
-         the box of the training start range and the goal, widened by this margin, for this
-         many frames, or when no observation (stale joint state or object TF) arrives.
-         The margin only catches object tracking errors (FoundationPose placing the cube far
-         away), not a cube the policy pushes or drops a few cm outside the start range. -->
-    <rosparam param="running_ood_terms">[object_to_goal_b]</rosparam>
-    <param name="running_ood_margin" value="0.3" />  <!-- m -->
-    <param name="running_ood_frames" value="3" />
-    <param name="running_timeout" value="1.0" />      <!-- s -->
-    <param name="startup_timeout" value="20.0" />     <!-- s -->
+    <!-- The OOD margins and running-stop thresholds are in the profile's supervisor: block. -->
   </node>
 
   <!-- Records each policy run as a rosbag episode for oopsie-data while enabled (~set_enabled). -->
   <node if="$(arg record)" pkg="pal_policy_deployer" type="episode_recorder.py" name="episode_recorder" output="screen">
+    <param name="task" value="$(arg task)" />
     <param name="profile" value="$(arg profile)" />
     <param name="record_dir" value="$(arg record_dir)" />
     <param name="operator" value="$(arg operator)" />
-    <!-- oopsie-data counts a different instruction or scene layout as a distinct task (at most
-         200 episodes count per task); change these when the setup changes. -->
     <param name="instruction" value="$(arg instruction)" />
-    <rosparam param="scene" subst_value="true">
+    <rosparam if="$(eval arg('arrangement') != '')" param="scene" subst_value="true">
       arrangement: $(arg arrangement)
     </rosparam>
   </node>

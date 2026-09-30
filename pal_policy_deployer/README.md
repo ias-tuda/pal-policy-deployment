@@ -39,7 +39,7 @@ angular:
 
 The grasp mode reuses the MJLab inference node and sends its seven raw actions to
 `pal_training_ik`. The object pose is currently mocked in the robot base frame in
-`pal_policy_deployer/config/kang_grasp_mock.yaml`.
+`pal_policy_deployer/config/profiles/mock.yaml`.
 
 Start inference and IK. By default the IK targets go to the subscriber controller:
 
@@ -59,7 +59,7 @@ inferer loads it and the IK node reads both from the inferer. The profile target
 robot's `/joint_states`. In simulation, override it with the simulator's 500 Hz topic:
 `joint_state_topic:=/simulator/joint_states`.
 
-Pass `profile:=/path/to/another_grasp_profile.yaml` to select a different
+Pass `profile:=<name in config/profiles/ or a path>` to select a different
 grasp checkpoint. The grasp profile lists the joint order, observation order, action
 dimension, model path, frames, and temporary object/goal observations. The node reads
 `deployment_start_config.json` beside the selected ONNX file and uses its positions
@@ -150,7 +150,7 @@ roslaunch pal_policy_deployer kang_grasp_deployer.launch start_controllers:=fals
 
 ## Kangaroo upper-body grasp policy
 
-`config/kang_grasp_upperbody.yaml` deploys `Mjlab-Grasp-UpperBody-Standing-ArmV36`
+`config/profiles/upperbody.yaml` deploys `Mjlab-Grasp-UpperBody-Standing-ArmV36`
 (`model_2999.onnx`). The policy controls the waist, both 7-DoF arms and both jaws. It
 reads 92 observations and writes 18 actions. It uses `action_mode: delta_joint_position`.
 At each 50 Hz step the inferer adds `action_scale * clip(action, -1, 1)` to the joint
@@ -179,7 +179,7 @@ roslaunch pal_policy_deployer kang_grasp_upperbody_move_to_start.launch \
   start_config_path:=/path/to/model_dir/deployment_start_config.json
 # 3. Check the first observation against the training start distribution
 roslaunch pal_policy_deployer kang_grasp_check_start.launch \
-  profile:=$(rospack find pal_policy_deployer)/config/kang_grasp_upperbody.yaml \
+  profile:=$(rospack find pal_policy_deployer)/config/profiles/upperbody.yaml \
   joint_state_topic:=/joint_states
 # 4. Inspect targets on /pal_policy/desired_state, then send them to the controller
 roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch \
@@ -198,9 +198,25 @@ controller holds the last compensated command. At the start pose, the gravity to
 by the stiffness matches the training `target_preload` to within about 2 mrad, so the torque
 changes little when the policy takes over.
 
+## Tasks and profiles
+
+A profile (`config/profiles/<name>.yaml`) is the model contract: model, joints, observation
+terms, topics, and the supervisor's OOD thresholds (`supervisor:` block). A task
+(`config/tasks/<name>.yaml`) says what the robot is asked to do: the profile to use, the
+instruction and the scene. Each task has one profile, and several tasks can share a profile.
+The task name is also the recording folder, `<record_dir>/<task>/<date>/<episode>/`.
+
+```bash
+roslaunch pal_policy_deployer kang_grasp_supervisor.launch task:=grasp-cube-upperbody
+```
+
+`profile:=`, `instruction:=` and `arrangement:=` override the task's values for one run (for
+example `profile:=cube` to try another model on the same task). A new setup that oopsie-data
+should count separately (other instruction or arrangement) is a new task file.
+
 ## Kangaroo left-arm grasp policy with gravity compensation
 
-`config/kang_grasp_leftarm_gc.yaml` deploys
+`config/profiles/leftarm_gravcomp.yaml` deploys
 `2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123`. The policy
 controls the left arm and the left jaw only. It reads 38 observations (`joint_pos_rel`,
 `joint_vel`, `last_action`, `joint_target_rel`, `jaw_to_object_b`, `object_yaw_to_jaw`,
@@ -218,7 +234,7 @@ robot_type: full_7dof_gripper
 
 
 ```bash
-P=$(rospack find pal_policy_deployer)/config/kang_grasp_leftarm_gc.yaml
+P=$(rospack find pal_policy_deployer)/config/profiles/leftarm_gravcomp.yaml
 M=/catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_07-44-46_grasp-la-gc-v36-s50-nt-smooth-wide-patient-lean-ft8xbpht1p_s123
 # 1. Left-arm controllers with the env.yaml gains, plus the left-arm gravity bridge
 roslaunch pal_policy_deployer kang_grasp_controllers.launch profile:=$P
@@ -253,7 +269,7 @@ other tools (for example the phone page in [`policy_web_control`](../policy_web_
 need no shell. Start the controllers of step 1 first, then:
 
 ```bash
-roslaunch pal_policy_deployer kang_grasp_supervisor.launch profile:=$P
+roslaunch pal_policy_deployer kang_grasp_supervisor.launch task:=grasp-cube
 rosservice call /pal_policy_supervisor/go_home   # stop the policy, run move_to_start_config.py
 rosservice call /pal_policy_supervisor/start     # step 4 with publish_commands:=true
 rosservice call /pal_policy_supervisor/stop      # Ctrl-C to the running job

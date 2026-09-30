@@ -42,6 +42,7 @@ from std_srvs.srv import Trigger, TriggerResponse
 from tf2_msgs.msg import TFMessage
 
 from check_start_distribution import check_observation, load_distribution
+from task_config import node_config, setting
 
 STRICT_TOLERANCE = 0.005
 
@@ -397,9 +398,7 @@ class Supervisor(object):
 
 def main():
     rospy.init_node("policy_supervisor")
-    profile_path = rospy.get_param("~profile")
-    with open(profile_path) as stream:
-        profile = yaml.safe_load(stream)
+    task, profile_path, profile = node_config()
     model_dir = os.path.dirname(profile["model_path"])
     start_config = (rospy.get_param("~start_config_path", "")
                     or os.path.join(model_dir, "deployment_start_config.json"))
@@ -428,14 +427,14 @@ def main():
     readiness = Readiness(
         profile, distribution_path, observation_topic,
         float(rospy.get_param("~observation_window", 0.5)),
-        float(rospy.get_param("~ood_margin", 0.05)), rospy.get_param("~ood_margins", {}))
+        float(setting("ood_margin", 0.05, profile, task)), setting("ood_margins", {}, profile, task))
     run_guard = RunGuard(
         profile["observation_terms"], load_distribution(distribution_path), observation_topic,
-        rospy.get_param("~running_ood_terms", ["object_to_goal_b"]),
-        float(rospy.get_param("~running_ood_margin", 0.05)),
-        int(rospy.get_param("~running_ood_frames", 3)),
-        float(rospy.get_param("~running_timeout", 1.0)),
-        float(rospy.get_param("~startup_timeout", 20.0)))
+        setting("running_ood_terms", ["object_to_goal_b"], profile, task),
+        float(setting("running_ood_margin", 0.05, profile, task)),
+        int(setting("running_ood_frames", 3, profile, task)),
+        float(setting("running_timeout", 1.0, profile, task)),
+        float(setting("startup_timeout", 20.0, profile, task)))
     # Median of the recent object TF stamp ages (receipt minus stamp) must lie in
     # [-~object_stamp_max_future, ~object_stamp_max_age]; mock objects have no TF to check.
     stamp_check = None

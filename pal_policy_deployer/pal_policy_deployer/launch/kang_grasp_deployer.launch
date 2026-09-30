@@ -1,5 +1,5 @@
 <launch>
-  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_cube.yaml" />
+  <arg name="profile" default="$(find pal_policy_deployer)/config/profiles/cube.yaml" />
   <arg name="publish_commands" default="true" />
   <arg name="joint_state_topic" default="" doc="Override the profile topic; empty uses the profile." />
   <arg name="action_topic" default="" doc="Override the profile topic; empty uses the profile." />

@@ -3,7 +3,7 @@
        direct_impedance_control with the training gains, both jaws under DirectPositionControl.
        The policy was trained without gravity feedforward, so no gravity bridge runs: the
        targets it sends carry the gravity load as PD error, as in simulation. -->
-  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_upperbody.yaml" />
+  <arg name="profile" default="$(find pal_policy_deployer)/config/profiles/upperbody.yaml" />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
     <arg name="local_joint_control_type" value="no_control" />

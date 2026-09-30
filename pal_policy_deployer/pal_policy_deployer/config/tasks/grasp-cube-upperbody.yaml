@@ -1,0 +1,4 @@
+# The same task with the upper-body standing policy.
+profile: upperbody
+instruction: Grasp the cube and move it to the goal
+scene: {arrangement: A}

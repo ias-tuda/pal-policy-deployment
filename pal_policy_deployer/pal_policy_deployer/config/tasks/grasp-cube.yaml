@@ -1,0 +1,7 @@
+# A task: what the robot is asked to do, recorded under <record_dir>/<task name>/.
+# The file name is the task name. The profile is the model contract (config/profiles/).
+profile: leftarm_gravcomp
+instruction: Grasp the cube and move it to the goal
+# oopsie-data counts a different instruction or scene layout as a distinct task (at most 200
+# episodes count per task), so add a task file when either changes.
+scene: {arrangement: A}

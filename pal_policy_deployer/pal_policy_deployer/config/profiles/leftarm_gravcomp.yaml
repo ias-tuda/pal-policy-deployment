@@ -54,3 +54,26 @@ object_timeout: 2.0
 # mock_object_position_b: [0.500, 0.109, -0.057]
 # mock_object_yaw_b: 0.0
 goal_position_b: [0.499, 0.111, 0.085]
+
+# Supervisor defaults for this profile (a task's `supervisor:` block or a ROS param overrides).
+# Start is blocked only when a feature is outside the training [min, max] widened by these
+# margins; smaller misses (e.g. an imprecise start pose) are shown as notes.
+supervisor:
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    joint_target_rel: 0.15   # rad
+    jaw_to_object_b: 0.03    # m
+    object_yaw_to_jaw: 0.2
+    object_to_goal_b: 0.03   # m
+  # While the policy runs, stop it when the object pose (relative to the fixed goal) leaves the
+  # box of the training start range and the goal, widened by the margin, for this many frames,
+  # or when no observation (stale joint state or object TF) arrives. The margin only catches
+  # object tracking errors (FoundationPose placing the cube far away), not a cube the policy
+  # pushes or drops a few cm outside the start range.
+  running_ood_terms: [object_to_goal_b]
+  running_ood_margin: 0.3    # m
+  running_ood_frames: 3
+  running_timeout: 1.0       # s
+  startup_timeout: 20.0      # s

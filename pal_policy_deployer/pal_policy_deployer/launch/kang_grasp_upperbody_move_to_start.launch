@@ -3,7 +3,7 @@
        compensation on the waist and both arms. Run with the upper-body controllers running.
        The move ends by exiting, which stops the gravity bridge; the controller then holds the
        last compensated command until the policy takes over with its target_preload. -->
-  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_upperbody.yaml" />
+  <arg name="profile" default="$(find pal_policy_deployer)/config/profiles/upperbody.yaml" />
   <arg name="start_config_path" />
 
   <node pkg="pal_gravity_compensation" type="gravity_compensation_node"

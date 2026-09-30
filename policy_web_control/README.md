@@ -32,10 +32,10 @@ With `pal_policy_deployer`'s `episode_recorder.py` running (started by
 the latest episode with quick options:
 outcome, categories and severity (the oopsie-data taxonomy), or Exclude (not the policy's fault,
 e.g. object tracking lost) / Discard. While recording is on, each Start policy run is one rosbag
-episode under `/catkin_ws/ias-nas/home/oopsie-data/<date>/<episode_id>/`. The conversion to the
+episode under `/catkin_ws/ias-nas/home/oopsie-data/<task>/<date>/<episode_id>/` (`task:=` of the launch file, a file in `config/tasks/`, default `grasp-cube`). The conversion to the
 oopsie-data HDF5 format is a separate, later step. The task instruction and the object
-arrangement rarely change, so they are launch args of `kang_grasp_supervisor.launch`
-(`instruction:=`, `arrangement:=`); the page only shows them. Use `_recorder:=` to change the recorder's node name.
+arrangement rarely change, so they are set in the task file
+(`config/tasks/<task>.yaml`, or `instruction:=`, `arrangement:=` on `kang_grasp_supervisor.launch`); the page only shows them. Use `_recorder:=` to change the recorder's node name.
 
 ## Deploying to the robot (kangaroo-5c)
 

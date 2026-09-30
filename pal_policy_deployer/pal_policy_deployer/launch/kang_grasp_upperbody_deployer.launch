@@ -2,7 +2,7 @@
   <!-- Upper-body grasp policy with delta joint-position actions. The inferer integrates the
        joint targets itself and sends them, without gravity feedforward, straight to the
        subscriber controller; there is no IK node and no gravity bridge. -->
-  <arg name="profile" default="$(find pal_policy_deployer)/config/kang_grasp_upperbody.yaml" />
+  <arg name="profile" default="$(find pal_policy_deployer)/config/profiles/upperbody.yaml" />
   <arg name="publish_commands" default="false" />
   <arg name="joint_state_topic" default="/simulator/joint_states" />
   <arg name="start_config_path" default="" />
