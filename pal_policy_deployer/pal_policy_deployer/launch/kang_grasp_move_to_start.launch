@@ -10,7 +10,7 @@
   <include file="$(find pal_gravity_compensation)/launch/gravity_compensation.launch" />
 
   <node pkg="pal_policy_deployer" type="move_to_start_config.py"
-        name="move_to_start_config" output="screen" required="true">
+        name="move_to_start_config" output="screen" required="true" clear_params="true">
     <rosparam command="load" file="$(arg config)" />
     <param name="start_config_path" value="$(arg start_config_path)" />
     <param name="position_tolerance" value="$(arg position_tolerance)" />

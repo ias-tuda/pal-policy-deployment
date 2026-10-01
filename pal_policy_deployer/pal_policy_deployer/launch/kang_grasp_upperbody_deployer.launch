@@ -20,7 +20,7 @@
   </node>
 
   <include if="$(arg start_controllers)"
-           file="$(find pal_policy_deployer)/launch/kang_grasp_upperbody_controllers.launch">
+           file="$(find pal_policy_deployer)/launch/kang_grasp_controllers.launch">
     <arg name="config" value="$(arg config)" />
   </include>
 </launch>

@@ -4,8 +4,8 @@
 # object, the goal) is set by the task in config/tasks/. Order matters.
 #
 # The gravity bridge must not run while the policy does: it republishes its last target to the
-# same controller topic. Start the controllers with gravity_bridge:=false; the move to the
-# start pose brings its own bridge (kang_grasp_move_to_start.launch), which exits with the move.
+# same controller topic. kang_grasp_controllers.launch starts none for this robot; the move to
+# the start pose brings its own bridge (kang_grasp_move_to_start.launch), which exits with the move.
 gravity_compensation: false
 
 joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
@@ -30,6 +30,7 @@ publish_commands: false
 # Joints the spawner puts under direct_impedance_control with the env.yaml gains. The jaw runs
 # in DirectPositionControl instead.
 impedance_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+position_joint_names: [gripper_left_finger_joint]
 
 robot_description: robot_description
 base_link: base_link

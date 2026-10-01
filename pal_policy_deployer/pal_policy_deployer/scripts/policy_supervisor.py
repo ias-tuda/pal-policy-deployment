@@ -4,7 +4,7 @@
 Services (std_srvs/Trigger):
   ~start    run the deployer launch (~deploy_command); refused while a job runs or when not ready
   ~stop     interrupt the running job (policy or home move)
-  ~go_home  stop the policy, then run move_to_start_config.py (~home_command)
+  ~go_home  stop the policy, then move to the start pose (~home_command)
 Topics:
   ~state      std_msgs/String, latched: "idle", "policy" or "home"
   ~log        std_msgs/String, one message per output line of the jobs
@@ -421,20 +421,16 @@ def main():
         "roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch",
         "config:=" + shlex.quote(config_path), "start_controllers:=false",
         "joint_state_topic:=/joint_states", rospy.get_param("~launch_args", "")])
-    # A robot whose controllers run without the gravity bridge names a launch file that brings
-    # the bridge for the move (the robot's supervisor: home_launch); ~home_args are then its args.
-    home_launch = setting("home_launch", "", config, task)
-    if home_launch:
-        # A private param of the move (_position_tolerance:=0.1) is the launch arg of that name.
-        args = [arg[1:] if arg.startswith("_") else arg
-                for arg in shlex.split(rospy.get_param("~home_args", ""))]
-        home = " ".join([
-            "roslaunch pal_policy_deployer", home_launch, "config:=" + shlex.quote(config_path),
-            "start_config_path:=" + shlex.quote(start_config)] + [shlex.quote(arg) for arg in args])
-    else:
-        home = " ".join([
-            "rosrun pal_policy_deployer move_to_start_config.py",
-            "_start_config_path:=" + shlex.quote(start_config), rospy.get_param("~home_args", "")])
+    # The move always loads the task's config, so it moves that robot's joints. A robot whose
+    # controllers run without the gravity bridge names a launch file that brings the bridge for
+    # the move (the robot's supervisor: home_launch).
+    home_launch = setting("home_launch", "kang_grasp_gravcomp_move_to_start.launch", config, task)
+    # A private param of the move (_position_tolerance:=0.1) is the launch arg of that name.
+    args = [arg[1:] if arg.startswith("_") else arg
+            for arg in shlex.split(rospy.get_param("~home_args", ""))]
+    home = " ".join([
+        "roslaunch pal_policy_deployer", home_launch, "config:=" + shlex.quote(config_path),
+        "start_config_path:=" + shlex.quote(start_config)] + [shlex.quote(arg) for arg in args])
     commands = {
         "policy": rospy.get_param("~deploy_command", inferer + " publish_commands:=true"),
         "observer": rospy.get_param("~observer_command", inferer + " dry_run:=true"),

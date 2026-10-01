@@ -11,5 +11,7 @@ fi
 start_config_path=$1
 shift
 
+# A previous move launch leaves its config (joint_names, ...) on the parameter server.
+rosparam delete /move_to_start_config 2>/dev/null || true
 rosrun pal_policy_deployer move_to_start_config.py _start_config_path:="$start_config_path"
 exec roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch "$@"

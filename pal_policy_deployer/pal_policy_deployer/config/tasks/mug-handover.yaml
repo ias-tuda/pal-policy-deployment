@@ -1,0 +1,46 @@
+# Hand the upright mug from the left jaw to the right jaw with the two-arm mug-handover policy.
+# See grasp-cube.yaml for what each key does.
+robot: both_arms_gravcomp
+instruction: Hand the mug over from the left hand to the right hand
+scene: {arrangement: A}
+
+# mug-handover-dense-std-scratch (kangaroo_mug_handover): both arms and both jaws, trained with
+# gravity compensation (start joint_target_rel mean ~0), same scene and gains as the mug-turn
+# run. 16 joint positions (left arm, left jaw, right arm, right jaw), 14 arm velocities,
+# 16 actions (14 delta joints, then the left and right binary jaw), 14 targets, 6 jaw_to_object
+# (left jaw, then right jaw), 6 object rotation, 3 object_to_goal: 75 observations.
+model:
+  model_path: /catkin_ws/src/models/kangaroo_mug_handover/2026-09-30_19-23-54_mug-handover-grasp10-v2-scratch_s123/model_5200.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_rot6d_b, object_to_goal_b]
+  action_dim: 16
+  action_mode: delta_joint_position
+  target_preload: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                   0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# The mug pose comes from this TF frame, with the same mug frame as mug-turn.yaml (origin at the
+# centre of the body cylinder, +z up the body axis, +x through the handle). Training spawns the
+# mug upright at any yaw, 0.04-0.26 m to the left of the table centre, so in reach of the left
+# jaw (start jaw_to_object_b left y ~0, right y ~+0.33).
+object_frame: mug_1
+# mock_object_position_b: [0.560, 0.150, -0.020]   # instead of object_frame: a fixed pose
+# mock_object_yaw_b: 0.0
+object_timeout: 2.0
+
+# The handover point, a constant in base_link: the centre of the training goal range
+# (goal_pose goal_range_b x 0.4-0.5, y -0.05-0.05, z 0.065-0.145), about 12 cm above the mug's
+# start height between the two jaws.
+goal_position_b: [0.45, 0.0, 0.105]
+
+supervisor:
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    joint_target_rel: 0.15   # rad
+    jaw_to_object_b: 0.03    # m
+    object_rot6d_b: 0.1
+    object_to_goal_b: 0.03   # m
+  # Stop when the mug leaves the start range of object_to_goal_b (widened to reach the goal) by
+  # more than the margin.
+  running_ood_terms: [object_to_goal_b]
+  running_ood_margin: 0.3    # m

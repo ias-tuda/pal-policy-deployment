@@ -8,7 +8,7 @@ scene: {arrangement: A}
 # compensation (start joint_target_rel mean ~0), same actions, gains and robot as the
 # stack-cube run. No goal term (39 observations).
 model:
-  model_path: /catkin_ws/src/models/kangaroo-mug-turn/2026-09-29_20-39-20_mug-turn-std-scratch_s123/model_2600.onnx
+  model_path: /catkin_ws/src/models/kangaroo-mug-turn/2026-10-01_09-27-23_mug-turn-release-ft2100_s123/model_2300.onnx
   observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_rot6d_b]
   action_dim: 8
   action_mode: delta_joint_position

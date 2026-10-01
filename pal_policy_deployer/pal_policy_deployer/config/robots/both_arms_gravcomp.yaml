@@ -1,0 +1,61 @@
+# A robot part and how it is driven: both arms and both jaws, with the gravity bridge
+# (config/gravity_compensation_both_arms.yaml) adding the feedforward torque. The waist is not
+# controlled. What the policy does with it (the model, the object, the goal) is set by the task
+# in config/tasks/. Order matters: the training order is the left arm and jaw, then the right.
+gravity_compensation: true
+# The bridge that kang_grasp_controllers.launch runs for this robot.
+gravity_compensation_config: gravity_compensation_both_arms.yaml
+
+joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+              gripper_left_finger_joint,
+              arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint,
+              gripper_right_finger_joint]
+arm_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                  arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+# joint_vel covers the arms only; last_action is the raw, unclipped policy output.
+joint_vel_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                  arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+
+# DeltaJointPositionAction on actions[0:14]; action_scale is read from the model's params/env.yaml.
+action_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                     arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+# Soft joint limits (0.9 of the MJCF range about its centre).
+target_lower: [-2.356191, -0.955564, -2.356191, -0.955564, -2.356191, -1.640613, -2.356191,
+               -2.356191, -0.955564, -2.356191, -0.955564, -2.356191, -1.640613, -2.356191]
+target_upper: [2.356191, 2.264564, 2.356191, 2.264564, 2.356191, 2.757624, 2.356191,
+               2.356191, 2.264564, 2.356191, 2.264564, 2.356191, 2.757624, 2.356191]
+# BinaryJawAction on actions[14:16]; open/closed from the named ONNX metadata.
+gripper_joint_names: [gripper_left_finger_joint, gripper_right_finger_joint]
+gripper_open_pos: [0.048, 0.048]
+gripper_closed_pos: [0.902, 0.902]
+command_topic: /pal_grasp/desired_state_uncompensated   # the gravity bridge listens here
+preview_topic: /pal_policy/desired_state
+publish_commands: false
+
+# Joints the spawner puts under direct_impedance_control with the env.yaml gains. The jaws run
+# in DirectPositionControl instead.
+impedance_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                        arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+position_joint_names: [gripper_left_finger_joint, gripper_right_finger_joint]
+
+robot_description: robot_description
+base_link: base_link
+tip_links: [arm_left_7_link, arm_right_7_link]
+tcp_offset: [0.0, 0.0, 0.148]
+# One jaw per tip link, in tip_links order: jaw_to_object_b is the left jaw's 3 values, then the
+# right jaw's. Both grippers hang identically below arm_*_7_link (URDF), so they share the
+# jaw-midpoint table of left_arm_gravcomp.yaml.
+jaw_joints: [gripper_left_finger_joint, gripper_right_finger_joint]
+jaw_mid_xy: [0.0, 0.0073]
+jaw_mid_q: [0.0475, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.9025]
+jaw_mid_z: [0.1755, 0.1794, 0.1826, 0.1853, 0.1875, 0.1891, 0.1902, 0.1905, 0.1905, 0.1903]
+joint_state_topic: /joint_states
+action_topic: /pal_policy/raw_actions
+policy_rate: 50.0
+state_timeout: 0.1
+
+# Supervisor defaults for this robot part (a task's `supervisor:` block or a ROS param overrides).
+supervisor:
+  running_ood_frames: 3
+  running_timeout: 1.0       # s
+  startup_timeout: 20.0      # s

@@ -51,17 +51,18 @@ P=$(rosrun pal_policy_deployer task_config.py grasp-cube)   # prints /tmp/pal_po
 
 ## Grasp robots
 
-| | `left_arm_gravcomp` | `upper_body_nogravcomp` |
-| --- | --- | --- |
-| Driven joints | 7 left-arm joints and left jaw | waist, both arms, both jaws |
-| Controllers launch | `kang_grasp_controllers.launch` | `kang_grasp_upperbody_controllers.launch` |
-| Move to start pose | `move_to_start_config.py` | `kang_grasp_upperbody_move_to_start.launch` |
-| Policy launch | `kang_grasp_upperbody_deployer.launch` | `kang_grasp_upperbody_deployer.launch` |
-| Gravity | the bridge adds the torque (`pal_gravity_compensation`) | none: the PD error holds the arms |
+| | `left_arm_gravcomp` | `both_arms_gravcomp` | `upper_body_nogravcomp` |
+| --- | --- | --- | --- |
+| Driven joints | 7 left-arm joints and left jaw | both arms, both jaws | waist, both arms, both jaws |
+| Move to start pose | `kang_grasp_gravcomp_move_to_start.launch` | `kang_grasp_gravcomp_move_to_start.launch` | `kang_grasp_upperbody_move_to_start.launch` |
+| Policy launch | `kang_grasp_upperbody_deployer.launch` | `kang_grasp_upperbody_deployer.launch` | `kang_grasp_upperbody_deployer.launch` |
+| Gravity | the bridge adds the torque (`pal_gravity_compensation`) | the two-arm bridge (`config/gravity_compensation_both_arms.yaml`) | none: the PD error holds the arms |
 
-`spawn_grasp_controller.py` warns if the robot's `gravity_compensation` does not match whether
-the gravity bridge is running, so use the controllers launch of the matching robot. A model must
-match its robot: joint set and order, and gravity compensation (`target_preload`).
+`kang_grasp_controllers.launch task:=<task>` starts the controllers of every robot: the robot
+config names the joints (`impedance_joint_names`, `position_joint_names`) and, with
+`gravity_compensation: true`, the gravity bridge (`gravity_compensation_config`), and
+`spawn_grasp_controller.py` sets them up. A model must match its robot: joint set and order,
+and gravity compensation (`target_preload`).
 
 Common to both:
 
@@ -107,7 +108,7 @@ and the robot's (`running_timeout`, `startup_timeout`). A ROS param overrides bo
 
 **Launch args.** `start_config_path:=` (default: `deployment_start_config.json` beside the
 model), `launch_args:="..."` (extra args for the deployer launch), `home_args:="..."` (extra
-params for `move_to_start_config.py`, default `_position_tolerance:=0.1`).
+args for the home move launch file, default `_position_tolerance:=0.1`).
 
 ## Manual step-by-step run
 
@@ -121,7 +122,7 @@ M=<model folder with deployment_start_config.json>
 # 1. Controllers (env.yaml gains) and the gravity bridge
 roslaunch pal_policy_deployer kang_grasp_controllers.launch task:=grasp-cube
 # 2. Move to the start pose through the gravity bridge
-rosrun pal_policy_deployer move_to_start_config.py _start_config_path:=$M/deployment_start_config.json
+roslaunch pal_policy_deployer kang_grasp_gravcomp_move_to_start.launch config:=$P start_config_path:=$M/deployment_start_config.json
 # 3. Check the first observation against the training start distribution
 roslaunch pal_policy_deployer kang_grasp_check_start.launch config:=$P joint_state_topic:=/joint_states
 # 4. Run the policy: first without commands (targets on /pal_policy/desired_state), then with
@@ -164,8 +165,10 @@ A new robot part or drive mode (other joints, with or without gravity compensati
 file in `config/robots/`.
 
 Supported observation terms: `joint_pos_rel`, `joint_vel`, `last_action`, `joint_target_rel`,
-`tcp_pos_b`, `tcp_quat_b`, `object_pos_b`, `object_yaw_b`, `goal_pos_b`, `jaw_to_object_b`,
-`object_yaw_to_jaw`, `object_to_goal_b`.
+`tcp_pos_b`, `tcp_quat_b`, `object_pos_b`, `object_yaw_b`, `object_rot6d_b`, `goal_pos_b`,
+`jaw_to_object_b`, `object_yaw_to_jaw`, `object_to_goal_b`. `jaw_to_object_b` has 3 values per
+jaw of `jaw_joints` (jaw i on `tip_links[i]`; `jaw_joint` for one jaw); `object_yaw_to_jaw`
+uses the first jaw.
 
 ## Locomotion
 
@@ -182,9 +185,9 @@ rostopic pub -1 /cmd_vel geometry_msgs/Twist "{linear: {x: 0.5, y: 0.0, z: 0.0},
 | Launch / script | Use |
 | --- | --- |
 | `kang_grasp_supervisor.launch` | Supervisor and recorder (`task:=`). The normal entry point. |
-| `kang_grasp_controllers.launch` | Left-arm controllers and gravity bridge (`task:=` or `config:=`). |
-| `kang_grasp_upperbody_controllers.launch` | Controllers for the upper-body robot. |
+| `kang_grasp_controllers.launch` | Controllers and gravity bridge of the task's robot (`task:=` or `config:=`). |
 | `kang_grasp_position_controllers.launch` | Position control of the left arm and jaw. |
+| `kang_grasp_gravcomp_move_to_start.launch` | Move the config's joints to the start pose through the running gravity bridge. |
 | `kang_grasp_upperbody_move_to_start.launch` | Move to the start pose with whole-body gravity compensation. |
 | `kang_grasp_check_start.launch` | Compare the first observation with the training distribution. |
 | `kang_grasp_upperbody_deployer.launch` | Inferer without IK (`publish_commands:=true` sends commands). |

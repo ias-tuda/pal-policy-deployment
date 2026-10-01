@@ -5,7 +5,7 @@
   <arg name="robot" default="" doc="Replaces the task's robot (a name in config/robots/ or a path)." />
   <arg name="start_config_path" default="" doc="Empty uses deployment_start_config.json beside the task's model." />
   <arg name="launch_args" default="" doc="Extra args for kang_grasp_upperbody_deployer.launch." />
-  <arg name="home_args" default="_position_tolerance:=0.1" doc="Extra params for move_to_start_config.py, or args (e.g. position_tolerance:=0.1) for the robot's home_launch." />
+  <arg name="home_args" default="_position_tolerance:=0.1" doc="Extra args for the home move launch file (_position_tolerance:=0.1 is the arg position_tolerance)." />
   <arg name="require_ready" default="true" doc="Refuse ~start while ~readiness is not ready." />
   <arg name="start_controllers" default="false" doc="false when kang_grasp_controllers.launch already runs." />
   <arg name="record" default="true" doc="Run episode_recorder.py; recording itself is switched on the web page." />

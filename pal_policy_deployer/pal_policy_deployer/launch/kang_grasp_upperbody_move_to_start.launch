@@ -5,6 +5,7 @@
        last compensated command until the policy takes over with its target_preload. -->
   <arg name="config" doc="Deployment config file: rosrun pal_policy_deployer task_config.py TASK prints its path." />
   <arg name="start_config_path" />
+  <arg name="position_tolerance" default="0.05" />
 
   <node pkg="pal_gravity_compensation" type="gravity_compensation_node"
         name="gravity_compensation" output="screen" required="true">
@@ -12,9 +13,10 @@
   </node>
 
   <node pkg="pal_policy_deployer" type="move_to_start_config.py"
-        name="move_to_start_config" output="screen" required="true">
+        name="move_to_start_config" output="screen" required="true" clear_params="true">
     <rosparam command="load" file="$(arg config)" />
     <param name="start_config_path" value="$(arg start_config_path)" />
+    <param name="position_tolerance" value="$(arg position_tolerance)" />
     <!-- The bridge adds the gravity torque, so command the start pose itself. -->
     <param name="command_topic" value="/pal_grasp/desired_state_uncompensated" />
     <param name="use_target_preload" value="false" />

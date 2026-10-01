@@ -43,6 +43,7 @@ publish_commands: false
 impedance_joint_names: [pelvis_1_joint, pelvis_2_joint,
                         arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
                         arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+position_joint_names: [gripper_left_finger_joint, gripper_right_finger_joint]
 
 robot_description: robot_description
 base_link: base_link
@@ -52,3 +53,8 @@ joint_state_topic: /joint_states
 action_topic: /pal_policy/raw_actions
 policy_rate: 50.0
 state_timeout: 0.1
+
+# Supervisor defaults for this robot part (a task's `supervisor:` block or a ROS param overrides).
+supervisor:
+  # The home move needs whole-tree gravity compensation, which the policy runs without.
+  home_launch: kang_grasp_upperbody_move_to_start.launch

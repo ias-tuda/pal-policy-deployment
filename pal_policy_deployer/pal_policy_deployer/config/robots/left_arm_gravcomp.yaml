@@ -2,6 +2,8 @@
 # (pal_gravity_compensation) adding the feedforward torque. What the policy does with it (the
 # model, the object, the goal) is set by the task in config/tasks/. Order matters.
 gravity_compensation: true
+# The bridge that kang_grasp_controllers.launch runs for this robot.
+gravity_compensation_config: $(find pal_gravity_compensation)/config/gravity_compensation.yaml
 
 joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
               gripper_left_finger_joint]
@@ -25,6 +27,7 @@ publish_commands: false
 # Joints the spawner puts under direct_impedance_control with the env.yaml gains. The jaw runs
 # in DirectPositionControl instead.
 impedance_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+position_joint_names: [gripper_left_finger_joint]
 
 robot_description: robot_description
 base_link: base_link

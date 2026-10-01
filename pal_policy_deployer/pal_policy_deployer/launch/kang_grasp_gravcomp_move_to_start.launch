@@ -1,0 +1,20 @@
+<launch>
+  <!-- Move the joints of the config (joint_names) to deployment_start_config.json, for a robot
+       with gravity_compensation: true: kang_grasp_controllers.launch runs its gravity bridge,
+       which adds the gravity torque. The supervisor's home move unless the robot names another
+       supervisor: home_launch. clear_params drops the parameters a previous move of another
+       task left on the parameter server. -->
+  <arg name="config" doc="Deployment config file: rosrun pal_policy_deployer task_config.py TASK prints its path." />
+  <arg name="start_config_path" />
+  <arg name="position_tolerance" default="0.1" />
+
+  <node pkg="pal_policy_deployer" type="move_to_start_config.py"
+        name="move_to_start_config" output="screen" required="true" clear_params="true">
+    <rosparam command="load" file="$(arg config)" />
+    <param name="start_config_path" value="$(arg start_config_path)" />
+    <param name="position_tolerance" value="$(arg position_tolerance)" />
+    <!-- The bridge adds the gravity torque, so command the start pose itself. -->
+    <param name="command_topic" value="/pal_grasp/desired_state_uncompensated" />
+    <param name="use_target_preload" value="false" />
+  </node>
+</launch>
