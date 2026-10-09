@@ -10,7 +10,7 @@ scene: {arrangement: A}
 # 16 actions (14 delta joints, then the left and right binary jaw), 14 targets, 6 jaw_to_object
 # (left jaw, then right jaw), 6 object rotation, 3 object_to_goal: 75 observations.
 model:
-  model_path: /catkin_ws/src/models/kangaroo_mug_handover/2026-09-30_19-23-54_mug-handover-grasp10-v2-scratch_s123/model_5200.onnx
+  model_path: /catkin_ws/src/models/kangaroo-mug-handover/2026-10-06_17-10-13_mug-handover-table837-ft9999_s456/model_10500.onnx
   observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_rot6d_b, object_to_goal_b]
   action_dim: 16
   action_mode: delta_joint_position

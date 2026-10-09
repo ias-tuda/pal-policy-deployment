@@ -25,7 +25,8 @@ Topics:
   ~status  std_msgs/String JSON, latched, 1 Hz: enabled, recording, the latest episode, the
            instruction and scene, the counts for the instruction and the last message
 Params ~task (the task file name in config/tasks/, also the folder name under ~record_dir,
-e.g. "grasp-cube"; its instruction and scene are the defaults), ~instruction and ~scene
+e.g. "grasp-cube", unless the task file sets record_task: to record several task files, such
+as other models for the same task, into one folder; its instruction and scene are the defaults), ~instruction and ~scene
 (a dict, e.g. {arrangement: A}) override the task file. They change rarely, so they are set in
 the task file or the launch file, not on the page. oopsie-data counts a different instruction or scene layout
 as a distinct task.
@@ -118,9 +119,10 @@ def classify_stop(reason):
 class Recorder(object):
     def __init__(self, root, task, supervisor, config_path, topics, instruction, scene, operator,
                  observation_topic, gap_threshold, max_duration, calibration_camera,
-                 goal_index, goal_threshold):
+                 goal_index, goal_threshold, task_file=None):
         self._root = os.path.join(root, task)
         self._task = task
+        self._task_file = task_file or task
         self._config_path = config_path
         with open(config_path) as stream:
             self._config_text = stream.read()
@@ -232,6 +234,7 @@ class Recorder(object):
             "episode_id": episode_id,
             "session": session,
             "task": self._task,
+            "task_file": self._task_file,
             "timestamp": time.time(),
             "operator_name": self._operator,
             "language_instruction": self._instruction,
@@ -509,7 +512,7 @@ def main():
     except (IOError, OSError, ValueError, KeyError) as error:
         rospy.logwarn("no goal distance: %s", error)
     recorder = Recorder(
-        root, task["name"], rospy.get_param("~supervisor", "/pal_policy_supervisor"), config_path,
+        root, task.get("record_task") or task["name"], rospy.get_param("~supervisor", "/pal_policy_supervisor"), config_path,
         rospy.get_param("~topics", DEFAULT_TOPICS),
         rospy.get_param("~instruction", "") or task["instruction"],
         scene,
@@ -519,7 +522,7 @@ def main():
         float(rospy.get_param("~gap_periods", 3)) / policy_rate,
         float(rospy.get_param("~max_duration", 600.0)),
         rospy.get_param("~calibration_camera", "torso_front"),
-        goal_index, float(rospy.get_param("~goal_threshold", 0.05)))
+        goal_index, float(rospy.get_param("~goal_threshold", 0.05)), task["name"])
     rospy.on_shutdown(recorder.shutdown)
     rospy.spin()
 

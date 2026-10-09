@@ -1,0 +1,48 @@
+# Put the upright mug on the coaster with the left-arm mug-coaster policy. See grasp-cube.yaml
+# for what each key does.
+robot: left_arm_gravcomp
+instruction: Put the mug on the coaster
+scene: {arrangement: A}
+
+# mug-coaster-centre-ft7200 (kangaroo-mug-coaster): left arm and left jaw, trained with gravity
+# compensation (start joint_target_rel mean ~0), same start pose, actions and gains as the
+# mug-turn and mug-upright runs. Their 39 observations plus object_to_goal_b (42).
+model:
+  model_path: /catkin_ws/src/models/kangaroo-mug-coaster/2026-10-06_22-31-28_mug-coaster-centre-ft7200_s123/model_7400.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_rot6d_b, object_to_goal_b]
+  action_dim: 8
+  action_mode: delta_joint_position
+  target_preload: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# The mug pose comes from this TF frame, with the same mug frame as mug-turn.yaml (origin at the
+# centre of the body cylinder, +z up the body axis, +x through the handle). Training spawns the
+# mug upright at any yaw.
+object_frame: mug_1
+# mock_object_position_b: [0.450, 0.110, -0.060]   # instead of object_frame: a fixed pose
+# mock_object_yaw_b: 0.0
+
+# The goal is hardcoded (no coaster TF). Training (goal_pose, stack_on_top on the coaster) puts
+# it at the mug centre standing on the coaster; mug and coaster spawn on the table at x +-0.06
+# around 0.47, y [-0.04, 0.26], at least 0.11 m apart. At the start the goal is ~0.008 m above
+# the mug centre (the coaster thickness). Place the coaster centre at the goal x, y. z is
+# the tracked upright mug_1 centre (~0.000 on 2026-10-07, not the mug-turn mock -0.060) + 0.008;
+# with -0.052 the start check failed (object_to_goal_b z -0.052, training [-0.014, 0.031]).
+# To calibrate, stand the mug on the coaster and copy the mug_1 TF position here.
+# x, y: 0.19 m from the mug at (0.585, 0.139), mostly in y, where training has the most room
+# (object_to_goal_b p01-p99: x +-0.11, y +-0.26); start object_to_goal_b ~(-0.06, -0.18, 0.008).
+goal_position_b: [0.525, -0.040, 0.008]
+object_timeout: 2.0
+
+supervisor:
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    joint_target_rel: 0.15   # rad
+    jaw_to_object_b: 0.03    # m
+    object_rot6d_b: 0.1
+    object_to_goal_b: 0.03   # m
+  # Stop when the mug (relative to the fixed goal) leaves the training start range widened by
+  # the margin (a mug tracking error, not the mug carried to the coaster).
+  running_ood_terms: [object_to_goal_b]
+  running_ood_margin: 0.3    # m

@@ -9,6 +9,9 @@ instruction: Pick up the cube and place it at the goal
 # TODO: the training cube start range (base_link x 0.32-0.48, y 0.18-0.37) is further left than
 # grasp-cube's; name the arrangement that matches it.
 scene: {arrangement: A}
+# All pick-and-place models record into one task folder, <record_dir>/pickandplace-cube/;
+# meta.json keeps this file's name as task_file.
+record_task: pickandplace-cube
 
 # The model contract. It must match the robot part: joint set and order, and gravity
 # compensation (trained without it, so the robot is left_arm_nogravcomp). Order matters.

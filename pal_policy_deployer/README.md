@@ -168,7 +168,8 @@ Supported observation terms: `joint_pos_rel`, `joint_vel`, `last_action`, `joint
 `tcp_pos_b`, `tcp_quat_b`, `object_pos_b`, `object_yaw_b`, `object_rot6d_b`, `goal_pos_b`,
 `jaw_to_object_b`, `object_yaw_to_jaw`, `object_to_goal_b`. `jaw_to_object_b` has 3 values per
 jaw of `jaw_joints` (jaw i on `tip_links[i]`; `jaw_joint` for one jaw); `object_yaw_to_jaw`
-uses the first jaw.
+uses the first jaw. `joint_target_rel` is the commanded target minus the default pose, also for
+`joint_position` models (pal_mjlab `commanded_target_rel`).
 
 ## Locomotion
 

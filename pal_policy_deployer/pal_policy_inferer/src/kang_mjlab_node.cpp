@@ -232,6 +232,31 @@ std::vector<double> grasp_gripper_open;
 std::vector<double> grasp_gripper_closed;
 std::vector<double> grasp_gripper_rate;
 std::vector<double> grasp_gripper_target;
+// Grip force limit for the jaws in position_joint_names (closing = increasing position and
+// effort). A freely moving jaw gets the policy's command unchanged. Contact is a jaw pushing
+// closed with at least jaw_contact_effort while slower than jaw_contact_speed; from then the
+// command is held jaw_grip offset past the measured jaw, and the offset is integrated so the
+// measured effort settles at jaw_grip_effort instead of the motor's limit (~4.5), which jammed
+// the left jaw half-closed. Contact ends when the policy commands the jaw below that hold (it
+// opens) or the jaw closes jaw_release_travel past where contact started (object lost). The
+// policy's own target (joint_target_rel) is not changed, as in training where the target stays
+// closed on contact. Off unless jaw_grip_effort is set.
+struct JawGrip {
+    size_t cmd_index;    // into the published command
+    size_t joint_index;  // into grasp_joint_names
+    bool contact = false;
+    double contact_position = 0.0;
+    double offset = 0.0;
+};
+std::vector<JawGrip> grasp_jaw_grips;
+double grasp_grip_effort = 0.0;
+double grasp_contact_effort = 4.0;
+double grasp_contact_speed = 0.15;
+double grasp_grip_gain = 0.02;        // rad of offset per effort unit per s
+double grasp_grip_offset_init = 0.03;  // a firm hold, regulated down from there
+double grasp_grip_offset_max = 0.1;
+double grasp_release_travel = 0.1;
+std::vector<double> grasp_effort;
 bool grasp_target_seeded = false;
 bool grasp_publish_commands = false;
 ros::Publisher grasp_command_pub;
@@ -263,6 +288,11 @@ std::string grasp_object_frame;
 std::string grasp_base_object_frame;
 std::vector<double> grasp_goal_offset_b;
 bool grasp_goal_latched = false;
+// goal_yaw4_b: (cos 4psi, sin 4psi) of the base object's yaw psi about base_link z, for a
+// 4-fold symmetric base object (e.g. the open box of the put-into-box policy). Latched and
+// followed with the goal position.
+double grasp_goal_yaw4_cos = 1.0;
+double grasp_goal_yaw4_sin = 0.0;
 // Keep following the base object after the first reading; hold the last goal while its TF is
 // stale (e.g. occluded). grasp_base_object_alpha low-passes the followed goal (1 = none).
 bool grasp_track_base_object = false;
@@ -287,11 +317,14 @@ int graspTermDim(const std::string& term)
     if (term == "joint_pos_rel") return grasp_joint_names.size();
     if (term == "joint_vel") return grasp_vel_indices.size();
     if (term == "last_action") return grasp_last_action.size();
-    if (term == "joint_target_rel") return grasp_delta_actions ? grasp_action_joint_names.size() : -1;
+    // The commanded joint target minus the default pose (pal_mjlab commanded_target_rel for
+    // joint_position): after the clip, rate limit, effort band and range clip.
+    if (term == "joint_target_rel")
+        return grasp_delta_actions || grasp_absolute_actions ? grasp_action_joint_names.size() : -1;
     if (term == "tcp_pos_b") return 3 * grasp_tip_links.size();
     if (term == "object_pos_b" || term == "goal_pos_b" || term == "object_to_goal_b") return 3;
     if (term == "jaw_to_object_b") return grasp_jaw_joints.empty() ? -1 : 3 * grasp_jaw_joints.size();
-    if (term == "object_yaw_b") return 2;
+    if (term == "object_yaw_b" || term == "goal_yaw4_b") return 2;
     if (term == "object_rot6d_b") return 6;
     if (term == "object_yaw_to_jaw") return grasp_jaw_joints.empty() ? -1 : 2;
     if (term == "tcp_quat_b") return 4 * grasp_tip_links.size();
@@ -899,6 +932,7 @@ void graspJointStateCb(const sensor_msgs::JointState::ConstPtr& msg)
     std::vector<double> q(grasp_chain_joint_names.size());
     std::vector<double> positions(grasp_joint_names.size());
     std::vector<double> velocities(grasp_joint_names.size());
+    std::vector<double> efforts(grasp_joint_names.size());
     for (size_t j = 0; j < grasp_chain_joint_names.size(); ++j) {
         const auto it = indices.find(grasp_chain_joint_names[j]);
         if (it == indices.end() || it->second >= msg->position.size()) {
@@ -918,10 +952,14 @@ void graspJointStateCb(const sensor_msgs::JointState::ConstPtr& msg)
         positions[j] = msg->position[it->second];
         velocities[j] = it->second < msg->velocity.size() ? msg->velocity[it->second] : 0.0;
         if (!std::isfinite(positions[j]) || !std::isfinite(velocities[j])) return;
+        // Only the jaw grip limit reads the effort; a missing one never signals contact.
+        efforts[j] = it->second < msg->effort.size() && std::isfinite(msg->effort[it->second])
+            ? msg->effort[it->second] : 0.0;
     }
     grasp_chain_q.swap(q);
     grasp_position.swap(positions);
     grasp_velocity.swap(velocities);
+    grasp_effort.swap(efforts);
     grasp_state_time = msg->header.stamp.isZero() ? ros::Time::now() : msg->header.stamp;
     grasp_state_received = true;
 }
@@ -988,6 +1026,9 @@ bool buildGraspObservation(std::vector<float>& obs)
                 for (int r = 0; r < 3; ++r) obs.push_back(static_cast<float>(grasp_object_rot_b[r][c]));
         } else if (term == "goal_pos_b") {
             for (double value : grasp_goal_b) obs.push_back(static_cast<float>(value));
+        } else if (term == "goal_yaw4_b") {
+            obs.insert(obs.end(), {static_cast<float>(grasp_goal_yaw4_cos),
+                                   static_cast<float>(grasp_goal_yaw4_sin)});
         } else if (term == "jaw_to_object_b") {
             // Object minus jaw midpoint, per jaw in jaw_joints order.
             for (const auto& jaw_mid : jaw_mids)
@@ -1050,6 +1091,31 @@ void publishGraspTarget()
     cmd.name.insert(cmd.name.end(), grasp_gripper_joint_names.begin(), grasp_gripper_joint_names.end());
     cmd.position = grasp_target;
     cmd.position.insert(cmd.position.end(), grasp_gripper_target.begin(), grasp_gripper_target.end());
+    for (auto& grip : grasp_jaw_grips) {
+        const size_t j = grip.joint_index;
+        double& target = cmd.position[grip.cmd_index];
+        if (!grip.contact && grasp_effort[j] >= grasp_contact_effort &&
+            std::abs(grasp_velocity[j]) < grasp_contact_speed && target > grasp_position[j]) {
+            grip.contact = true;
+            grip.contact_position = grasp_position[j];
+            grip.offset = grasp_grip_offset_init;
+            ROS_INFO("%s: contact at %.4f (effort %.2f), limiting the grip to effort %.2f",
+                     grasp_joint_names[j].c_str(), grasp_position[j], grasp_effort[j], grasp_grip_effort);
+        }
+        if (!grip.contact) continue;
+        if (target <= grasp_position[j] + grip.offset ||
+            grasp_position[j] > grip.contact_position + grasp_release_travel) {
+            grip.contact = false;
+            ROS_INFO("%s: released at %.4f (command %.4f)", grasp_joint_names[j].c_str(),
+                     grasp_position[j], target);
+            continue;
+        }
+        grip.offset = std::min(grasp_grip_offset_max, std::max(0.0, grip.offset +
+            grasp_grip_gain * (grasp_grip_effort - grasp_effort[j]) / grasp_rate));
+        target = grasp_position[j] + grip.offset;
+        ROS_INFO_THROTTLE(0.5, "%s: gripping at %.4f, offset %.4f, effort %.2f",
+                          grasp_joint_names[j].c_str(), grasp_position[j], grip.offset, grasp_effort[j]);
+    }
     cmd.velocity.assign(cmd.name.size(), 0.0);
     cmd.effort.assign(cmd.name.size(), 0.0);
     grasp_preview_pub.publish(cmd);
@@ -1080,12 +1146,33 @@ bool updateGraspGoal()
     }
     const std::vector<double> goal = {t.x + grasp_goal_offset_b[0], t.y + grasp_goal_offset_b[1],
                                       t.z + grasp_goal_offset_b[2]};
+    const auto& r = tf.transform.rotation;
+    const tf2::Quaternion quat(r.x, r.y, r.z, r.w);
+    double yaw4_cos = grasp_goal_yaw4_cos, yaw4_sin = grasp_goal_yaw4_sin;
+    if (std::isfinite(quat.length()) && quat.length() > 0.5) {
+        double roll, pitch, yaw;
+        tf2::Matrix3x3(quat.normalized()).getRPY(roll, pitch, yaw);
+        if (std::isfinite(yaw)) {
+            yaw4_cos = std::cos(4.0 * yaw);
+            yaw4_sin = std::sin(4.0 * yaw);
+        }
+    }
     if (grasp_goal_latched) {
         for (size_t k = 0; k < 3; ++k)
             grasp_goal_b[k] += grasp_base_object_alpha * (goal[k] - grasp_goal_b[k]);
+        // Low-pass the unit vector, then renormalise it.
+        const double c = grasp_goal_yaw4_cos + grasp_base_object_alpha * (yaw4_cos - grasp_goal_yaw4_cos);
+        const double s = grasp_goal_yaw4_sin + grasp_base_object_alpha * (yaw4_sin - grasp_goal_yaw4_sin);
+        const double n = std::hypot(c, s);
+        if (n > 1e-6) {
+            grasp_goal_yaw4_cos = c / n;
+            grasp_goal_yaw4_sin = s / n;
+        }
         return true;
     }
     grasp_goal_b = goal;
+    grasp_goal_yaw4_cos = yaw4_cos;
+    grasp_goal_yaw4_sin = yaw4_sin;
     grasp_goal_latched = true;
     ROS_INFO("Grasp goal latched from %s: [%.3f, %.3f, %.3f] in %s", grasp_base_object_frame.c_str(),
              grasp_goal_b[0], grasp_goal_b[1], grasp_goal_b[2], grasp_base_link.c_str());
@@ -1120,6 +1207,16 @@ bool updateGraspObject()
         return false;
     grasp_object_b = {t.x, t.y, t.z};
     grasp_object_rot_b = rot;
+    if (grasp_object_yaw_symmetry == 4) {
+        // A cube: the tracker may report any face as up (e.g. its y axis), where the RPY yaw is
+        // ill-defined once the x axis points up. Take the yaw of a horizontal cube axis instead;
+        // for an upright cube (z up) that is the x axis, the same as the RPY yaw.
+        int up = 0;
+        for (int k = 1; k < 3; ++k)
+            if (std::abs(rot[2][k]) > std::abs(rot[2][up])) up = k;
+        const int h = up == 0 ? 1 : 0;
+        yaw = std::atan2(rot[1][h], rot[0][h]);
+    }
     if (grasp_object_yaw_symmetry > 1) {
         const double period = 2.0 * M_PI / grasp_object_yaw_symmetry;
         yaw -= period * std::floor(yaw / period + 0.5);
@@ -1551,6 +1648,49 @@ bool loadGraspDeltaActionConfig(ros::NodeHandle& nh, const std::string& model_pa
     return true;
 }
 
+// jaw_grip_effort and its tuning parameters: the grip force limit of the commanded jaws in
+// position_joint_names. Needs the published command layout (action, then binary jaw joints).
+bool loadGraspJawGrip(ros::NodeHandle& nh)
+{
+    grasp_jaw_grips.clear();
+    nh.param("jaw_grip_effort", grasp_grip_effort, 0.0);
+    if (grasp_grip_effort == 0.0) return true;
+    nh.param("jaw_contact_effort", grasp_contact_effort, grasp_contact_effort);
+    nh.param("jaw_contact_speed", grasp_contact_speed, grasp_contact_speed);
+    nh.param("jaw_grip_gain", grasp_grip_gain, grasp_grip_gain);
+    nh.param("jaw_grip_offset_init", grasp_grip_offset_init, grasp_grip_offset_init);
+    nh.param("jaw_grip_offset_max", grasp_grip_offset_max, grasp_grip_offset_max);
+    nh.param("jaw_release_travel", grasp_release_travel, grasp_release_travel);
+    const double values[] = {grasp_grip_effort, grasp_contact_effort, grasp_contact_speed, grasp_grip_gain,
+                             grasp_grip_offset_init, grasp_grip_offset_max, grasp_release_travel};
+    if (!std::all_of(std::begin(values), std::end(values), [](double v) { return std::isfinite(v) && v > 0.0; }) ||
+        grasp_grip_effort >= grasp_contact_effort || grasp_grip_offset_init > grasp_grip_offset_max) {
+        ROS_ERROR("jaw grip parameters must be > 0, jaw_grip_effort < jaw_contact_effort and "
+                  "jaw_grip_offset_init <= jaw_grip_offset_max");
+        return false;
+    }
+    std::vector<std::string> jaws;
+    nh.getParam("position_joint_names", jaws);
+    std::vector<std::string> commanded = grasp_action_joint_names;
+    commanded.insert(commanded.end(), grasp_gripper_joint_names.begin(), grasp_gripper_joint_names.end());
+    for (const auto& jaw : jaws) {
+        const auto cmd_it = std::find(commanded.begin(), commanded.end(), jaw);
+        const auto joint_it = std::find(grasp_joint_names.begin(), grasp_joint_names.end(), jaw);
+        if (cmd_it == commanded.end() || joint_it == grasp_joint_names.end()) continue;
+        JawGrip grip;
+        grip.cmd_index = static_cast<size_t>(cmd_it - commanded.begin());
+        grip.joint_index = static_cast<size_t>(joint_it - grasp_joint_names.begin());
+        grasp_jaw_grips.push_back(grip);
+        ROS_INFO("  %s: grip effort %g after contact (effort >= %g, speed < %g)", jaw.c_str(),
+                 grasp_grip_effort, grasp_contact_effort, grasp_contact_speed);
+    }
+    if (grasp_jaw_grips.empty()) {
+        ROS_ERROR("jaw_grip_effort is set but no commanded joint is in position_joint_names");
+        return false;
+    }
+    return true;
+}
+
 bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
 {
     if (!nh.getParam("joint_names", grasp_joint_names) || grasp_joint_names.empty() ||
@@ -1582,6 +1722,7 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     grasp_last_action.assign(config.action_dim, 0.0f);
     grasp_position.assign(grasp_joint_names.size(), 0.0);
     grasp_velocity.assign(grasp_joint_names.size(), 0.0);
+    grasp_effort.assign(grasp_joint_names.size(), 0.0);
     if (!nh.getParam("tip_links", grasp_tip_links)) {
         std::string tip_link;
         nh.param<std::string>("tip_link", tip_link, "arm_left_7_link");
@@ -1589,6 +1730,7 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     }
     if (grasp_tip_links.empty()) { ROS_ERROR("tip_links must name at least one link"); return false; }
     if (!loadGraspDeltaActionConfig(nh, model_path)) return false;
+    if (!loadGraspJawGrip(nh)) return false;
     // jaw_joints: one jaw per tip link, in tip_links order; jaw_joint is the one-jaw form.
     grasp_jaw_joints.clear();
     grasp_jaw_indices.clear();
@@ -1665,6 +1807,12 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     const bool needs_goal = std::any_of(grasp_observation_terms.begin(), grasp_observation_terms.end(),
         [](const std::string& term) { return term == "goal_pos_b" || term == "object_to_goal_b"; });
     nh.param<std::string>("base_object_frame", grasp_base_object_frame, "");
+    const bool needs_goal_yaw = std::find(grasp_observation_terms.begin(), grasp_observation_terms.end(),
+                                          "goal_yaw4_b") != grasp_observation_terms.end();
+    if (needs_goal_yaw && (grasp_base_object_frame.empty() || !needs_goal)) {
+        ROS_ERROR("goal_yaw4_b needs base_object_frame and goal_pos_b or object_to_goal_b");
+        return false;
+    }
     if (!needs_goal) {
         if (!grasp_base_object_frame.empty() || nh.hasParam("goal_position_b")) {
             ROS_ERROR("The observation terms have no goal; remove goal_position_b and base_object_frame");

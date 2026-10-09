@@ -6,6 +6,8 @@
   <arg name="config" doc="Deployment config file: rosrun pal_policy_deployer task_config.py TASK prints its path." />
   <arg name="start_config_path" />
   <arg name="position_tolerance" default="0.1" />
+  <arg name="max_speed" default="0.35" doc="rad/s of the fastest joint; lower it when a long move lags." />
+  <arg name="tracking_error_limit" default="0.5" doc="rad; the move fails when a joint lags its path by more." />
 
   <include file="$(find pal_gravity_compensation)/launch/gravity_compensation.launch" />
 
@@ -14,6 +16,8 @@
     <rosparam command="load" file="$(arg config)" />
     <param name="start_config_path" value="$(arg start_config_path)" />
     <param name="position_tolerance" value="$(arg position_tolerance)" />
+    <param name="max_speed" value="$(arg max_speed)" />
+    <param name="tracking_error_limit" value="$(arg tracking_error_limit)" />
     <!-- The bridge adds the gravity torque, so command the start pose itself. -->
     <param name="command_topic" value="/pal_grasp/desired_state_uncompensated" />
     <param name="use_target_preload" value="false" />

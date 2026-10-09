@@ -8,7 +8,7 @@ scene: {arrangement: A}
 # compensation (start joint_target_rel mean ~0). Same observations, actions and robot as the
 # mug-turn run (39 observations, no goal term).
 model:
-  model_path: /catkin_ws/src/models/kangaroo_mug_upright/2026-09-29_20-39-14_mug-upright-std-scratch_s456/model_1300.onnx
+  model_path: /catkin_ws/src/models/kangaroo-mug-upright/2026-10-06_20-56-07_mug-upright-raised-ft7500_s456/model_7600.onnx
   observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_rot6d_b]
   action_dim: 8
   action_mode: delta_joint_position
@@ -21,7 +21,7 @@ model:
 object_frame: mug_1
 # mock_object_position_b: [0.450, 0.110, -0.080]   # instead of object_frame: a fixed pose
 # mock_object_yaw_b: 0.0
-object_timeout: 2.0
+object_timeout: 3.0
 
 supervisor:
   ood_margin: 0.05
@@ -29,8 +29,8 @@ supervisor:
     joint_pos_rel: 0.15      # rad
     joint_vel: 0.3           # rad/s
     joint_target_rel: 0.15   # rad
-    jaw_to_object_b: 0.03    # m
-    object_rot6d_b: 0.1
+    jaw_to_object_b: 0.20    # m
+    object_rot6d_b: 1.0
   # No goal: stop when the mug leaves the start range of jaw_to_object_b widened by the margin
   # (a mug tracking error, not the mug moving in the jaw).
   running_ood_terms: [jaw_to_object_b]

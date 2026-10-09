@@ -21,7 +21,7 @@ import rospy
 import yaml
 
 CONFIG = os.path.join(rospkg.RosPack().get_path("pal_policy_deployer"), "config")
-TASK_ONLY = ("robot", "instruction", "scene", "name")  # Not copied into the deployment config.
+TASK_ONLY = ("robot", "instruction", "scene", "name", "record_task")  # Not copied into the deployment config.
 
 
 def _path(kind, name):

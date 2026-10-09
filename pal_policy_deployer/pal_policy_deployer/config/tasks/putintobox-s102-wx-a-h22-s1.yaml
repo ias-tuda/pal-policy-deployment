@@ -1,0 +1,66 @@
+# A task: what the robot is asked to do with a robot part. The file name is the task name; see
+# pickandplace-wc-abs-c-s78.yaml for what each key does.
+robot: left_arm_nogravcomp
+instruction: Put the cube into the box
+# oopsie-data counts a different instruction or scene layout as a distinct task (at most 200
+# episodes count per task). All put-into-box models record into one folder.
+scene: {arrangement: A}
+record_task: put-cube-into-box
+
+# The model contract. It must match the robot part: joint set and order, and gravity
+# compensation (trained without it, so the robot is left_arm_nogravcomp). Order matters.
+model:
+  # pp_s102_WX-a-H22_s1_it3500 (pal_mjlab Mjlab-PickPlace-Pal-Kangaroo-Grippers, S10.2 box-rim; see
+  # DEPLOYMENT.md beside the model): S10.1's contract retrained with the table 22 mm higher
+  # (table top -0.063 in base_link, S10.1's was -0.085; the real one is -0.065, see below).
+  # Left arm and left jaw, absolute joint targets, G20 gains,
+  # the stack task's slew rates, observations in base_link (40). Unlike the pick-and-place
+  # models it observes the raw last action (CMD_OBS=act, here last_action) and the box pose:
+  # goal_pos_b is the centre of the box's bottom face (on the table: its xy and the table-top
+  # height), goal_yaw4_b is (cos 4psi, sin 4psi) of the box yaw psi.
+  model_path: /catkin_ws/src/models/siwei-put-into-box/pp_s102_WX-a-H22_s1_it3500/model_3500.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw_b, goal_pos_b, goal_yaw4_b]
+  action_dim: 8
+  action_mode: joint_position
+  # Training's effort band torque is the joint actfrcrange, 0.7 of the actuator effort_limit
+  # (EFFORT=CTP: 35 Nm on arm 1-2, 17.5 Nm on arm 3-7); env.yaml records only effort_limit.
+  effort_band_fraction: 0.7
+  # The training ee_orientation_b makes w >= 0.
+  tcp_quat_sign: w_positive
+
+# FoundationPose publishes both objects as TF frames: cube_1 (origin at the cube centre) and
+# box_1. The goal is box_1 + goal_offset_b, followed while the policy runs (the box may be
+# nudged; training tracked it live with a 5-8 step lag).
+object_frame: cube_1
+# Training spawned the cube at any yaw; fold the tracked yaw of the symmetric cube into +-pi/4.
+object_yaw_symmetry: 4
+base_object_frame: box_1
+# goal_pos_b must be the centre of the box's bottom face (the table-top height under the box).
+# Checked 2026-10-06: box_1's origin is that point (box_1 z -0.067 with the table top measured
+# at -0.065, its z axis up), so no offset.
+goal_offset_b: [0.0, 0.0, 0.0]
+track_base_object: true
+base_object_alpha: 0.2   # low-pass on the followed box pose per tick (1 = none)
+# Beyond object_timeout the inferer skips steps and the supervisor stops the policy after
+# running_timeout. Training (LAG=FP) saw a 5-8 step (0.10-0.16 s) lag on the cube and the box.
+object_timeout: 2.0
+
+supervisor:
+  # Start is blocked only when a feature is outside the training [min, max] widened by these
+  # margins; smaller misses are shown as notes.
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    last_action: 0.15
+    tcp_pos_b: 0.03          # m
+    tcp_quat_b: 0.1
+    object_pos_b: 0.03       # m
+    object_yaw_b: 0.2
+    goal_pos_b: 0.02         # m
+    goal_yaw4_b: 0.05
+  # While the policy runs, stop it when the cube leaves the box of the training start ranges
+  # of the cube and the goal, widened by the margin, for running_ood_frames frames, or when no
+  # observation (stale joint state or TF) arrives.
+  running_ood_terms: [object_pos_b]
+  running_ood_margin: 0.3    # m

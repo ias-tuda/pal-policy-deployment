@@ -39,7 +39,7 @@ h1{font-size:1.2em;margin:0 0 12px}
 #ready ul{margin:6px 0 0;padding-left:18px}#ready li.note{color:#aaa}
 button{display:block;width:100%;padding:22px;margin:0 0 12px;font-size:1.3em;font-weight:600;
 border:0;border-radius:10px;color:#fff}
-#start{background:#1a7f37}#go_home{background:#1f5fbf}#stop{background:#c62828;padding:34px;font-size:1.6em}
+#start{background:#1a7f37}#go_home{background:#1f5fbf}#reregister{background:#7b3fb5}#stop{background:#c62828;padding:34px;font-size:1.6em}
 button:disabled{opacity:.4}
 pre{background:#000;padding:8px;font-size:11px;height:40vh;overflow:auto;white-space:pre-wrap;word-break:break-all}
 .box{padding:10px 12px;border-radius:8px;margin-bottom:12px;background:#222;font-size:.95em}
@@ -64,13 +64,16 @@ button.link{background:none;padding:8px 0;margin:4px 0;font-size:.9em;font-weigh
 <button id="stop" onclick="send('stop')">STOP</button>
 <button id="start" onclick="send('start')">Start policy</button>
 <button id="go_home" onclick="send('go_home')">Go home</button>
+<button id="reregister" onclick="reregister()">Re-register tracking</button>
 <!-- Below the buttons: their heights change, which must not move the buttons. -->
 <div id="label" class="box"></div>
 <div id="rec" class="box"></div>
 <div id="ready"></div>
 <pre id="log"></pre>
-<button id="reregister" class="link" onclick="if(confirm('Re-register tracking?'))send('reregister')">Re-register tracking</button>
 <script>
+let policyState='idle';
+// Re-registering mid-episode can jump the tracked pose, so only confirm while the policy runs.
+function reregister(){if(policyState==='idle'||confirm('Policy is running. Re-register tracking?'))send('reregister');}
 async function send(cmd){
   try{const r=await fetch('/'+cmd,{method:'POST'});const j=await r.json();if(!j.success)alert(j.message);}
   catch(e){alert('request failed: '+e);}
@@ -79,6 +82,7 @@ async function send(cmd){
 async function poll(){
   try{
     const s=await (await fetch('/status')).json();
+    policyState=s.state;
     document.getElementById('state').textContent=s.state==='idle'?'idle':('RUNNING: '+s.state);
     const r=s.readiness,box=document.getElementById('ready');
     document.getElementById('start').disabled=s.state!=='idle'||!r.ready;
