@@ -69,12 +69,19 @@ RESTART_DEPLOYER = ("pal-stop deployer; "
 RESTART_BRINGUP = "pal-stop ros_bringup; sleep 5; pal-start ros_bringup"
 FULL_HOMING = "rosrun play_motion run_motion full_homing"
 GRIPPER = "rosrun kangaroo_doctor gripper_left.py %s"
+# When the gripper does not move. Try in this order; check with "Close left gripper" after each.
+GRIPPER_FIX_STEPS = [
+    "1. E-stop power cycle (the page restarts the deployer after it).",
+    "2. Reboot the robot.",
+    "3. With the default controllers running (gripper_left_controller), detach the gripper (this "
+    "kills its motor), reattach it, then do the e-stop power cycle.",
+]
 # Exit codes of gripper_left.py: (result shown, advice)
 GRIPPER_RESULTS = {
     0: ("done", ""),
     2: ("stopped partway", "The gripper stopped partway: it holds an object, or something blocks it."),
-    3: ("DID NOT MOVE", "The left gripper did not move: a fault, not an object. "
-                        "Fix: e-stop power cycle (the page restarts the deployer after it)."),
+    3: ("DID NOT MOVE", "The left gripper did not move: a fault, not an object. Fix, in order:\n"
+                        + "\n".join(GRIPPER_FIX_STEPS)),
 }
 
 # (regex in deployer log / dmesg, what it means, what to do)
@@ -596,12 +603,14 @@ ESTOP_STEPS = [
 PAGE = u"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Kangaroo Doctor</title>
+<link rel="icon" id="favicon" type="image/svg+xml" href="/favicon.svg?off">
 <style>
 :root{--bg:#111;--card:#1c1c1c;--fg:#eee;--muted:#999;--ok:#1a7f37;--idle:#8a6d00;--err:#c62828;
 --coupler:#2d3b2f;--btn:#333;--blue:#1f5fbf}
 *{box-sizing:border-box}
 body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:var(--bg);color:var(--fg);max-width:900px;margin:auto}
-h1{font-size:1.2em;margin:0 0 12px;display:flex;justify-content:space-between;align-items:baseline}
+h1{font-size:1.2em;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
+h1 span{display:flex;align-items:center;gap:10px}#logo{width:36px;height:36px}
 h1 small{font-size:.65em;color:var(--muted);font-weight:400}
 #banner{padding:14px;border-radius:10px;margin-bottom:12px;font-size:1.1em;font-weight:600}
 #banner.ok{background:var(--ok)}#banner.bad{background:var(--err)}#banner.warn{background:var(--idle)}#banner.off{background:#333}
@@ -651,7 +660,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:.85em;margin-top:10p
 .muted{color:var(--muted);font-size:.85em}
 @media (max-width:520px){#body{grid-template-columns:1fr}}
 </style></head><body>
-<h1>Kangaroo Doctor <small id="updated">connecting...</small></h1>
+<h1><span><img id="logo" src="/favicon.svg?off" alt="">Kangaroo Doctor</span> <small id="updated">connecting...</small></h1>
 <div id="banner" class="off">checking...</div>
 <button id="next" class="primary hidden"></button>
 
@@ -742,6 +751,10 @@ function renderOthers(d){
   o.forEach(x=>{const e=el('div',null,'diag l'+x.level);e.appendChild(el('b',LEVEL[x.level]));
     e.appendChild(document.createTextNode(x.name.replace(/^\//,'')+(x.message?': '+x.message:'')));list.appendChild(e);});
 }
+// Favicon and logo: the Kangaroo with a cross colored by the state (as the banner).
+let favState=null;
+function favicon(state){if(state===favState)return;favState=state;
+  $('favicon').href=$('logo').src='/favicon.svg?'+state;}
 function render(d,job){
   lastD=d;lastJ=job;
   $('updated').textContent='updated '+d.time;
@@ -754,6 +767,7 @@ function render(d,job){
   else if(errs.length){b.className='bad';b.textContent=errs.map(s=>s.name+' '+({missing:'missing',drive_error:'drive error'}[s.status]||'error')).join(', ');}
   else{b.className=d.problems.some(p=>p.level==='error')?'bad':'warn';b.textContent=d.problems.length?d.problems[0].text:'Not ready';}
   // The suggested next step as one big button.
+  favicon({ok:'ok',bad:'bad',warn:'busy'}[b.className]||'off');
   const n=$('next'),busy=job&&job.running,nx=!busy&&NEXT[d.next];
   n.classList.toggle('hidden',!nx);
   if(nx){n.textContent='Next step: '+nx[0];n.onclick=()=>nx[1]==='estop'?showEstop(true):startJob(nx[1]);}
@@ -840,11 +854,16 @@ function renderControllers(d,busy){
 async function poll(){
   try{const s=await (await fetch('/status')).json();render(s.diagnosis,s.job);renderJob(s.job);
     renderControllers(s.controllers,!!(s.job&&s.job.running));}
-  catch(e){$('banner').className='off';$('banner').textContent='page server unreachable';}
+  catch(e){$('banner').className='off';$('banner').textContent='page server unreachable';favicon('off');}
 }
 setInterval(poll,2000);poll();
 </script></body></html>
 """
+
+# The Kangaroo (headless torso with camera bar, curved arms, long legs; drawn after the photo on
+# pal-robotics.com/robot/kangaroo) with a doctor's cross whose color shows the state.
+FAVICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="0" y="0" width="64" height="64" rx="14" fill="#1f5fbf"/><polyline points="21,12 16.5,18 15.5,26 14.5,34" fill="none" stroke="#121417" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="11.6" y="33" width="5.6" height="5" rx="1.2" fill="#121417"/><polyline points="12.4,38 11,42" fill="none" stroke="#121417" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><polyline points="16.4,38 17.8,42" fill="none" stroke="#121417" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="21.5" cy="11.5" r="3.6" fill="#121417"/><rect x="22.8" y="35.5" width="7.4" height="5" rx="1.8" fill="#121417"/><polyline points="26.6,40 27.4,56" fill="none" stroke="#121417" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="23.8,40 24.8,53" fill="none" stroke="#121417" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><rect x="23.8" y="55.5" width="7.6" height="3.4" rx="1.4" fill="#121417"/><polyline points="43,12 47.5,18 48.5,26 49.5,34" fill="none" stroke="#121417" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="46.8" y="33" width="5.6" height="5" rx="1.2" fill="#121417"/><polyline points="51.6,38 53,42" fill="none" stroke="#121417" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><polyline points="47.6,38 46.2,42" fill="none" stroke="#121417" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="42.5" cy="11.5" r="3.6" fill="#121417"/><rect x="33.8" y="35.5" width="7.4" height="5" rx="1.8" fill="#121417"/><polyline points="37.4,40 36.6,56" fill="none" stroke="#121417" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="40.2,40 39.2,53" fill="none" stroke="#121417" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><rect x="32.6" y="55.5" width="7.6" height="3.4" rx="1.4" fill="#121417"/><rect x="22.5" y="6.5" width="19" height="23" rx="3.5" fill="#121417"/><rect x="28" y="8.2" width="8" height="2.2" rx="1.1" fill="#9fd8ff"/><polyline points="24.5,11.5 32,17.5 39.5,11.5" fill="none" stroke="#3a4250" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><polyline points="32,17.5 32,13" fill="none" stroke="#3a4250" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><rect x="29.6" y="20.3" width="4.8" height="1.5" rx="0.75" fill="#9fd8ff"/><rect x="24" y="30.5" width="16" height="5.5" rx="1.5" fill="#121417"/><polyline points="32,31.5 32,35" fill="none" stroke="#3a4250" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="50" r="12.5" fill="#1f5fbf"/><circle cx="50" cy="50" r="10" fill="{badge}"/><rect x="47.6" y="43.5" width="4.8" height="13" rx="1" fill="#ffffff"/><rect x="43.5" y="47.6" width="13" height="4.8" rx="1" fill="#ffffff"/></svg>'
+FAVICON_BADGE = {"ok": "#1a9f45", "bad": "#d32f2f", "busy": "#e0a000", "off": "#777777"}
 
 ESTOP_HTML = "".join("<li>%s</li>" % s.split(". ", 1)[1] for s in ESTOP_STEPS)
 PAGE = PAGE.replace('<ol id="estop-steps"></ol>', '<ol id="estop-steps">%s</ol>' % ESTOP_HTML)
@@ -1097,6 +1116,10 @@ def make_handler(doctor):
         def do_GET(self):
             if self.path == "/":
                 self._reply(200, PAGE, "text/html; charset=utf-8")
+            elif self.path.startswith("/favicon"):  # also /favicon.ico, which browsers ask for
+                state = self.path.partition("?")[2]
+                self._reply(200, FAVICON.replace("{badge}", FAVICON_BADGE.get(state, FAVICON_BADGE["ok"])),
+                            "image/svg+xml")
             elif self.path == "/status":
                 self._reply(200, json.dumps(doctor.status()))
             else:

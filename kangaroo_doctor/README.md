@@ -17,6 +17,9 @@ rosrun kangaroo_doctor kangaroo_doctor.py            # on the robot
 
 Open `http://kangaroo-5c:8001` (`--port` changes the port). The page shows:
 
+- the Kangaroo icon, in the browser tab and next to the title. Its cross shows the state: green
+  healthy, red problem, amber starting or an action runs, gray page unreachable.
+
 - a body map of all motors, colored by state. A motor is red when its EtherCAT state is bad,
   and dark red when the bus looks fine but the drive itself reports an error. Tap a motor to see
   its drive details: error code, board and motor errors, e-stop, temperatures, positions.
@@ -71,8 +74,13 @@ while a policy publishes there). It then reports how far the gripper got:
 With exit code 3, the output says whether the controller still commands the target, so the
 drive is not following (drive error, e-stop, jammed finger), or the controller itself gave
 up (aborted goal and its error code). It also shows the drive diagnostics of slave 31.
-The fix is the **e-stop power cycle**; after a gripper close shows DID NOT MOVE, the page opens
-the e-stop steps and restarts the deployer once you re-arm.
+To fix it, try these in order, and close the gripper again after each to check:
+
+1. **E-stop power cycle.** After a gripper close shows DID NOT MOVE, the page opens the e-stop
+   steps and restarts the deployer once you re-arm.
+2. **Reboot** the robot.
+3. With the default controllers running (`gripper_left_controller`), **detach the gripper**,
+   which kills its motor, reattach it, then do the e-stop power cycle.
 Close the gripper while it is empty to check it: it must close fully.
 
 ## Deploy to the robot

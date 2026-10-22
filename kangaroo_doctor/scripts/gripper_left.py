@@ -167,8 +167,12 @@ def diagnose_not_moved(controller, result, desired, target):
                      "aborted or never executed.", desired)
     drive = drive_diagnostics()
     rospy.logerr("  drive (slave 31): %s", drive or "no diagnostics on /diagnostics_agg")
-    rospy.logerr("  fix: e-stop power cycle (hold 2-5 s, release, re-arm), then restart the "
-                 "deployer. The kangaroo_doctor page walks you through it.")
+    rospy.logerr("  fix, in order (close the gripper again after each to check):")
+    rospy.logerr("    1. e-stop power cycle (hold 2-5 s, release, re-arm), then restart the deployer;"
+                 " the kangaroo_doctor page walks you through it")
+    rospy.logerr("    2. reboot the robot")
+    rospy.logerr("    3. with the default controllers running (gripper_left_controller), detach the "
+                 "gripper (this kills its motor), reattach it, then do the e-stop power cycle")
 
 
 def main():
