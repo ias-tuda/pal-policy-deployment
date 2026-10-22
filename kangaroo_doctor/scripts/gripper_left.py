@@ -6,19 +6,21 @@
   rosrun kangaroo_doctor gripper_left.py 0.5            # fraction closed: 0 open, 1 closed
   rosrun kangaroo_doctor gripper_left.py close --duration 3
 
-It uses whichever controller owns gripper_left_finger_joint:
-  - gripper_left_controller (default controllers): a FollowJointTrajectory goal.
-  - subscriber_controller (pal_policy_deployer kang_grasp_controllers.launch): a ramp on the
-    gravity bridge input, with the arm joints held at the targets the bridge sends now. Refused
-    while a policy or a home move publishes there.
-Open and closed are the gripper_open_pos / gripper_closed_pos of pal_policy_deployer's
-config/robots/left_arm_gravcomp.yaml.
+It uses whichever controller owns the gripper joint:
+  - gripper_left_controller (kangaroo) or left_gripper_controller (talos), the default
+    controllers: a FollowJointTrajectory goal.
+  - subscriber_controller (kangaroo, pal_policy_deployer kang_grasp_controllers.launch): a ramp on
+    the gravity bridge input, with the arm joints held at the targets the bridge sends now.
+    Refused while a policy or a home move publishes there.
+Kangaroo's open and closed are the gripper_open_pos / gripper_closed_pos of pal_policy_deployer's
+config/robots/left_arm_gravcomp.yaml; talos' are the open/close_left_gripper play_motion motions.
 
 Exit code: 0 target reached, 1 error, 2 stopped partway (holding an object, or blocked),
 3 the gripper did not move (a fault: see the printed diagnosis).
 """
 
 import argparse
+import socket
 import sys
 
 import actionlib
@@ -31,9 +33,17 @@ from diagnostic_msgs.msg import DiagnosticArray
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 
-JOINT = "gripper_left_finger_joint"
-MOTOR_DIAGNOSTICS = "/Hardware/Motor/gripper_left_finger_motor"
-OPEN, CLOSED = 0.048, 0.902
+ROBOTS = {
+    "kangaroo": {"joint": "gripper_left_finger_joint", "controller": "gripper_left_controller",
+                 "motor": "gripper_left_finger_motor", "slave": 31, "open": 0.048, "closed": 0.902},
+    "talos": {"joint": "gripper_left_joint", "controller": "left_gripper_controller",
+              "motor": "gripper_left_motor", "slave": 34, "open": 0.0, "closed": -0.7},
+}
+ROBOT = ROBOTS["talos" if socket.gethostname().startswith("talos") else "kangaroo"]
+JOINT = ROBOT["joint"]
+TRAJECTORY_CONTROLLER = ROBOT["controller"]
+MOTOR_DIAGNOSTICS = "/Hardware/Motor/" + ROBOT["motor"]
+OPEN, CLOSED = ROBOT["open"], ROBOT["closed"]
 BRIDGE_INPUT = "/pal_grasp/desired_state_uncompensated"
 BRIDGE_OUTPUT = "/subscriber_controller/desired_state"
 RATE = 50.0
@@ -61,8 +71,8 @@ def target_position(value):
 def gripper_state(controller):
     """(actual, desired) from the owning controller's state topics, so it works without
     joint_state_controller. desired is what the controller commands the motor now."""
-    if controller == "gripper_left_controller":
-        state = rospy.wait_for_message("/gripper_left_controller/state",
+    if controller == TRAJECTORY_CONTROLLER:
+        state = rospy.wait_for_message("/%s/state" % TRAJECTORY_CONTROLLER,
                                        JointTrajectoryControllerState, timeout=5.0)
         index = list(state.joint_names).index(JOINT)
         return state.actual.positions[index], state.desired.positions[index]
@@ -90,8 +100,8 @@ def drive_diagnostics():
     for status in array.status:
         if status.name == MOTOR_DIAGNOSTICS:
             level = {0: "OK", 1: "WARN", 2: "ERROR", 3: "STALE"}.get(status.level, "?")
-            keys = ("Driver state", "Error code", "Motor errors", "Board errors", "Emergency stop",
-                    "Actual control mode", "Motor temperature")
+            keys = ("Driver state", "Error code", "Driver error code", "Motor errors", "Board errors",
+                    "Emergency stop", "CANopen SM state", "Actual control mode", "Motor temperature")
             values = ", ".join("%s: %s" % (v.key, v.value) for v in status.values if v.key in keys)
             return "%s %s; %s" % (level, status.message.strip() or "(no message)", values)
     return None
@@ -109,10 +119,10 @@ def owner():
 
 def via_trajectory_controller(target, duration):
     """Returns a description of the action result."""
-    client = actionlib.SimpleActionClient("/gripper_left_controller/follow_joint_trajectory",
+    client = actionlib.SimpleActionClient("/%s/follow_joint_trajectory" % TRAJECTORY_CONTROLLER,
                                           FollowJointTrajectoryAction)
     if not client.wait_for_server(rospy.Duration(5.0)):
-        raise RuntimeError("gripper_left_controller action server not available")
+        raise RuntimeError("%s action server not available" % TRAJECTORY_CONTROLLER)
     goal = FollowJointTrajectoryGoal()
     goal.trajectory.joint_names = [JOINT]
     goal.trajectory.points = [JointTrajectoryPoint(positions=[target], velocities=[0.0],
@@ -166,13 +176,14 @@ def diagnose_not_moved(controller, result, desired, target):
         rospy.logerr("  the controller itself commands %.3f, not the target: the goal was "
                      "aborted or never executed.", desired)
     drive = drive_diagnostics()
-    rospy.logerr("  drive (slave 31): %s", drive or "no diagnostics on /diagnostics_agg")
+    rospy.logerr("  drive (slave %d): %s", ROBOT["slave"], drive or "no diagnostics on /diagnostics_agg")
     rospy.logerr("  fix, in order (close the gripper again after each to check):")
     rospy.logerr("    1. e-stop power cycle (hold 2-5 s, release, re-arm), then restart the deployer;"
-                 " the kangaroo_doctor page walks you through it")
+                 " the doctor page walks you through it")
     rospy.logerr("    2. reboot the robot")
-    rospy.logerr("    3. with the default controllers running (gripper_left_controller), detach the "
-                 "gripper (this kills its motor), reattach it, then do the e-stop power cycle")
+    if JOINT == "gripper_left_finger_joint":  # kangaroo
+        rospy.logerr("    3. with the default controllers running (gripper_left_controller), detach "
+                     "the gripper (this kills its motor), reattach it, then do the e-stop power cycle")
 
 
 def main():
@@ -187,12 +198,13 @@ def main():
         controller = owner()
         before, _ = gripper_state(controller)
         rospy.loginfo("%s %.4f -> %.4f via %s", JOINT, before, target, controller)
-        if controller == "gripper_left_controller":
+        if controller == TRAJECTORY_CONTROLLER:
             result = via_trajectory_controller(target, args.duration)
-        elif controller == "subscriber_controller":
+        elif controller == "subscriber_controller" and JOINT == "gripper_left_finger_joint":
             result = via_gravity_bridge(target, args.duration)
         else:
-            raise RuntimeError("no running controller owns {}".format(JOINT))
+            raise RuntimeError("no running controller owns {} (or {} is not supported)".format(
+                JOINT, controller))
         rospy.sleep(0.5)
         after, desired = gripper_state(controller)
         rospy.loginfo("%s now %.4f (commanded %.4f, effort %.2f; %s)", JOINT, after, desired,
@@ -207,8 +219,8 @@ def main():
     if abs(way) > REACHED and (after - before) / way < NOT_MOVED:
         diagnose_not_moved(controller, result, desired, target)
         return EXIT_NOT_MOVED
-    rospy.logwarn("stopped %.3f short of the target: holding an object (a cube stalls the jaw at "
-                  "~0.48), or blocked", target - after)
+    rospy.logwarn("stopped %.3f short of the target: holding an object (on kangaroo a cube stalls "
+                  "the jaw at ~0.48), or blocked", abs(target - after))
     return EXIT_PARTWAY
 
 

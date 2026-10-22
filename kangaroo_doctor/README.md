@@ -1,13 +1,16 @@
 # kangaroo_doctor
 
-A page and a command-line tool for when kangaroo-5c doesn't come up. They show which EtherCAT
-slave fails (by motor name) and walk you through the usual fixes:
+A page and a command-line tool for when kangaroo-5c or talos-7c doesn't come up. They show which
+EtherCAT slave fails (by motor name) and walk you through the usual fixes:
 
 1. **Restart deployer.** This fixes most problems: a deployer that isn't running, a leftover
    deployer still holding the bus, or motors that never switched on.
 2. **E-stop power cycle**, if a motor stays in error. This resets a frozen drive: hold the e-stop
    for 2–5 s, release it, then press the blinking red or yellow button to re-arm.
-3. **Restart ros_bringup**, if `full_homing` is rejected. Then home again.
+3. **Restart ros_bringup**, if `full_homing` is rejected. Then home again (kangaroo only).
+
+The robot comes from the hostname (`kangaroo*` or `talos*`), or in the container from `--robot`.
+See [Talos](#talos) for what differs there.
 
 ## Web page
 
@@ -17,7 +20,7 @@ rosrun kangaroo_doctor kangaroo_doctor.py            # on the robot
 
 Open `http://kangaroo-5c:8001` (`--port` changes the port). The page shows:
 
-- the Kangaroo icon, in the browser tab and next to the title. Its cross shows the state: green
+- the robot icon (Kangaroo or Talos), in the browser tab and next to the title. Its cross shows the state: green
   healthy, red problem, amber starting or an action runs, gray page unreachable.
 
 - a body map of all motors, colored by state. A motor is red when its EtherCAT state is bad,
@@ -51,7 +54,7 @@ rosrun kangaroo_doctor kangaroo_doctor.py gripper close   # or open; runs grippe
 ```
 
 The script also runs in the dev container. There it runs its commands on the robot over ssh as
-`pal@kangaroo-5c` (`--robot` changes the target).
+`pal@kangaroo-5c` (`--robot pal@talos-7c` for Talos).
 
 ## Left gripper
 
@@ -83,16 +86,37 @@ To fix it, try these in order, and close the gripper again after each to check:
    which kills its motor, reattach it, then do the e-stop power cycle.
 Close the gripper while it is empty to check it: it must close fully.
 
+## Talos
+
+On talos-7c the page is "Talos Doctor" at `http://talos-7c:8001`. What differs from kangaroo:
+
+- Slave map: 38 slaves. Junctions are 0 and 15. Slaves 7, 14, 24 and 35 are the ATI F/T sensors
+  (ankles, wrists); they must be OP like the motors. The body map also shows torso and head.
+- No **Full homing**: talos has no `full_homing` motion. **Restart ros_bringup** stays.
+- E-stop: read from `/Hardware/Power` → `Emergency`. Talos reports no "waiting for re-arm".
+- Drives report `Driver error code`, `CANopen SM state` and `Drive temperature` (shown when you tap
+  a motor).
+- No `/tmp/robot_type.yaml`, so the robot_type check is skipped.
+- The icon is a Talos (black body as on talos-7c) instead of the Kangaroo.
+- Left gripper: `gripper_left_joint` on `left_gripper_controller`, open 0.0, closed -0.7 (as the
+  `open_left_gripper`/`close_left_gripper` motions), drive slave 34. The `subscriber_controller`
+  path is kangaroo only.
+
 ## Deploy to the robot
 
 ```bash
 cd /catkin_ws && catkin_make && source devel/setup.bash
 rosrun pal_deploy deploy.py --package kangaroo_doctor kangaroo-5c   # user pal
+rosrun pal_deploy deploy.py --package kangaroo_doctor talos-7c      # same for Talos
 ```
+
+In the dev container, ssh to talos-7c fails with "host key ... differs from the key for the IP
+address" (the robots share LAN IPs). Pass `RSYNC_RSH="ssh -o CheckHostIP=no"` to the deploy; the
+doctor itself already uses `CheckHostIP=no`.
 
 ### Start at boot
 
-kangaroo-5c starts the page at boot as a PAL startup app. `pal_startup.sh` also loads
+kangaroo-5c and talos-7c start the page at boot as a PAL startup app. `pal_startup.sh` also loads
 `~/.pal/pal_startup` after PAL's config. `/home` is persistent, so this needs no root and no
 `rw`/`chroot`. Two files on the robot (user pal):
 

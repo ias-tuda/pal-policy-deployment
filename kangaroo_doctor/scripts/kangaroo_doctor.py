@@ -1,14 +1,16 @@
 #!/usr/bin/env python
-"""Beginner helper for kangaroo-5c: which EtherCAT slave fails, and the recovery ladder.
+"""Beginner helper for kangaroo-5c and talos-7c: which EtherCAT slave fails, and the recovery
+ladder.
 
   web     (default) page on http://<robot>:8001 with a body map of the motors, the diagnosis
           and buttons for the recovery steps
   status  print the slaves by motor name and what to do next
   fix     guided: restart deployer -> e-stop power cycle -> give up
-  homing  run full_homing; if REJECTED, restart ros_bringup and retry
+  homing  run full_homing; if REJECTED, restart ros_bringup and retry (kangaroo only)
   gripper open|close the left gripper (gripper_left.py), and tell whether it really moved
 
-Runs on the robot (deployed with pal_deploy), or from the container over ssh.
+Runs on the robot (deployed with pal_deploy), or from the container over ssh. The robot
+(kangaroo or talos) comes from the hostname, or from --robot in the container.
 
 Usage: rosrun kangaroo_doctor kangaroo_doctor.py [web|status|fix|homing|gripper open|close] [--port 8001]
 """
@@ -37,26 +39,81 @@ try:
 except NameError:
     pass
 
-ROBOT = "pal@kangaroo-5c"
-ON_ROBOT = socket.gethostname().startswith("kangaroo")
-
-# slave_position from /opt/pal/ferrum/share/pal_deployer_cfg/config/device/motor/*.cpf
-SLAVES = {
-    0: "coupler",
-    1: "leg_right_1", 2: "leg_right_2", 3: "leg_right_3", 4: "leg_right_4",
-    5: "leg_right_5", 6: "leg_right_length",
-    7: "leg_left_1", 8: "leg_left_3", 9: "leg_left_2", 10: "leg_left_5",
-    11: "leg_left_4", 12: "leg_left_length",
-    13: "coupler",
-    14: "arm_right_1", 15: "arm_right_2", 16: "arm_right_3", 17: "arm_right_4",
-    18: "arm_right_5", 19: "arm_right_6", 20: "arm_right_7",
-    21: "gripper_right_finger",
-    22: "pelvis_1", 23: "pelvis_2",
-    24: "arm_left_1", 25: "arm_left_2", 26: "arm_left_3", 27: "arm_left_4",
-    28: "arm_left_5", 29: "arm_left_6", 30: "arm_left_7",
-    31: "gripper_left_finger",
+# slave_position from /opt/pal/ferrum/share/pal_deployer_cfg/config/device/{motor,sensor}/*.cpf
+# parts: the body map of the page, as [title, [slaves in joint order], full width]
+ROBOTS = {
+    "kangaroo": {
+        "title": "Kangaroo Doctor",
+        "target": "pal@kangaroo-5c",
+        "slaves": {
+            0: "coupler",
+            1: "leg_right_1", 2: "leg_right_2", 3: "leg_right_3", 4: "leg_right_4",
+            5: "leg_right_5", 6: "leg_right_length",
+            7: "leg_left_1", 8: "leg_left_3", 9: "leg_left_2", 10: "leg_left_5",
+            11: "leg_left_4", 12: "leg_left_length",
+            13: "coupler",
+            14: "arm_right_1", 15: "arm_right_2", 16: "arm_right_3", 17: "arm_right_4",
+            18: "arm_right_5", 19: "arm_right_6", 20: "arm_right_7",
+            21: "gripper_right_finger",
+            22: "pelvis_1", 23: "pelvis_2",
+            24: "arm_left_1", 25: "arm_left_2", 26: "arm_left_3", 27: "arm_left_4",
+            28: "arm_left_5", 29: "arm_left_6", 30: "arm_left_7",
+            31: "gripper_left_finger",
+        },
+        "couplers": {0, 13},  # GX-JC06 junctions, they stay PREOP
+        "parts": [["Right arm", [14, 15, 16, 17, 18, 19, 20, 21]],
+                  ["Left arm", [24, 25, 26, 27, 28, 29, 30, 31]],
+                  ["Pelvis", [22, 23], 1], ["Right leg", [1, 2, 3, 4, 5, 6]],
+                  ["Left leg", [7, 9, 8, 11, 10, 12]], ["Junctions", [0, 13], 1]],
+        "homing": "rosrun play_motion run_motion full_homing",
+        "robot_type": "full_7dof_gripper",
+        "gripper_slave": 31,
+        "estop_rearm": "Re-arm: press the blinking red or yellow button on the robot.",
+    },
+    "talos": {
+        "title": "Talos Doctor",
+        "target": "pal@talos-7c",
+        "slaves": {
+            0: "coupler",
+            1: "leg_right_2", 2: "leg_right_1", 3: "leg_right_4", 4: "leg_right_3",
+            5: "leg_right_6", 6: "leg_right_5",
+            7: "ft_ankle_right",
+            8: "leg_left_2", 9: "leg_left_1", 10: "leg_left_4", 11: "leg_left_3",
+            12: "leg_left_5", 13: "leg_left_6",
+            14: "ft_ankle_left",
+            15: "coupler",
+            16: "arm_right_2", 17: "arm_right_1", 18: "arm_right_3", 19: "arm_right_4",
+            20: "arm_right_5", 21: "arm_right_6", 22: "arm_right_7",
+            23: "gripper_right",
+            24: "ft_wrist_right",
+            25: "torso_2", 26: "torso_1",
+            27: "arm_left_2", 28: "arm_left_1", 29: "arm_left_3", 30: "arm_left_4",
+            31: "arm_left_5", 32: "arm_left_6", 33: "arm_left_7",
+            34: "gripper_left",
+            35: "ft_wrist_left",
+            36: "head_2", 37: "head_1",
+        },
+        "couplers": {0, 15},  # GX-JC06 junctions, they stay PREOP
+        "parts": [["Right arm", [17, 16, 18, 19, 20, 21, 22, 23, 24]],
+                  ["Left arm", [28, 27, 29, 30, 31, 32, 33, 34, 35]],
+                  ["Torso", [26, 25]], ["Head", [37, 36]],
+                  ["Right leg", [2, 1, 4, 3, 6, 5, 7]], ["Left leg", [9, 8, 11, 10, 12, 13, 14]],
+                  ["Junctions", [0, 15], 1]],
+        "homing": None,  # talos has no full_homing motion
+        "robot_type": None,  # no /tmp/robot_type.yaml
+        "gripper_slave": 34,
+        "estop_rearm": "Re-arm the robot as after any e-stop.",
+    },
 }
-COUPLERS = {0, 13}  # GX-JC06 junctions, they stay PREOP
+
+
+def robot_kind(name):
+    return "talos" if "talos" in name else "kangaroo"
+
+
+ON_ROBOT = socket.gethostname().startswith(("kangaroo", "talos"))
+ROBOT_KIND = robot_kind(socket.gethostname()) if ON_ROBOT else "kangaroo"
+ROBOT = ROBOTS[ROBOT_KIND]["target"]
 
 DEPLOYER_LOG = "~/.ros/log/latest/deployer.pal.log/current"
 
@@ -67,22 +124,35 @@ RESTART_DEPLOYER = ("pal-stop deployer; "
                     "pal-stop ros_bringup; sleep 5; pal-start ros_bringup; sleep 5; "
                     "pal-start deployer")
 RESTART_BRINGUP = "pal-stop ros_bringup; sleep 5; pal-start ros_bringup"
-FULL_HOMING = "rosrun play_motion run_motion full_homing"
 GRIPPER = "rosrun kangaroo_doctor gripper_left.py %s"
-# When the gripper does not move. Try in this order; check with "Close left gripper" after each.
-GRIPPER_FIX_STEPS = [
-    "1. E-stop power cycle (the page restarts the deployer after it).",
-    "2. Reboot the robot.",
-    "3. With the default controllers running (gripper_left_controller), detach the gripper (this "
-    "kills its motor), reattach it, then do the e-stop power cycle.",
-]
-# Exit codes of gripper_left.py: (result shown, advice)
-GRIPPER_RESULTS = {
-    0: ("done", ""),
-    2: ("stopped partway", "The gripper stopped partway: it holds an object, or something blocks it."),
-    3: ("DID NOT MOVE", "The left gripper did not move: a fault, not an object. Fix, in order:\n"
-                        + "\n".join(GRIPPER_FIX_STEPS)),
-}
+GRIPPER_DETACH_STEP = ("3. With the default controllers running (gripper_left_controller), detach "
+                       "the gripper (this kills its motor), reattach it, then do the e-stop power "
+                       "cycle.")
+
+
+def use_robot(kind):
+    """Set the robot-specific globals (slave map, homing, gripper and e-stop steps, page)."""
+    global ROBOT_KIND, SLAVES, COUPLERS, FULL_HOMING, GRIPPER_RESULTS, ESTOP_STEPS, PAGE
+    ROBOT_KIND = kind
+    robot = ROBOTS[kind]
+    SLAVES, COUPLERS, FULL_HOMING = robot["slaves"], robot["couplers"], robot["homing"]
+    # When the gripper does not move. Try in this order; check with "Close left gripper" after each.
+    fix_steps = ["1. E-stop power cycle (the page restarts the deployer after it).",
+                 "2. Reboot the robot."] + ([GRIPPER_DETACH_STEP] if kind == "kangaroo" else [])
+    # Exit codes of gripper_left.py: (result shown, advice)
+    GRIPPER_RESULTS = {
+        0: ("done", ""),
+        2: ("stopped partway", "The gripper stopped partway: it holds an object, or something blocks it."),
+        3: ("DID NOT MOVE", "The left gripper did not move: a fault, not an object. Fix, in order:\n"
+                            + "\n".join(fix_steps)),
+    }
+    ESTOP_STEPS = [
+        "1. Press the e-stop and hold it 2-5 s.",
+        "2. Release the e-stop (twist it until it pops back up).",
+        "3. " + robot["estop_rearm"],
+    ]
+    PAGE = make_page(robot)  # after ESTOP_STEPS
+
 
 # (regex in deployer log / dmesg, what it means, what to do)
 KNOWN_ERRORS = [
@@ -115,7 +185,8 @@ def _wrap(cmd):
     # Interactive bash: the ROS env and pal-start/pal-stop are set up in ~/.bashrc.
     if ON_ROBOT:
         return ["bash", "-ic", cmd]
-    return ["ssh", "-o", "ConnectTimeout=5", ROBOT, "bash -ic " + _quote(cmd)]
+    # CheckHostIP=no: the robots share LAN IPs (10.68.0.1), so the IP key would clash.
+    return ["ssh", "-o", "ConnectTimeout=5", "-o", "CheckHostIP=no", ROBOT, "bash -ic " + _quote(cmd)]
 
 
 def _decode(data):
@@ -285,10 +356,11 @@ def diagnose(restarted_recently=False):
         # Only when something is wrong: the logs keep old errors around.
         hints = [{"text": why, "fix": fix} for why, fix in known_log_errors()
                  if not any(p["fix"] == fix for p in problems)]
-    rtype = robot_type()
-    if rtype and rtype != "full_7dof_gripper":
+    expected = ROBOTS[ROBOT_KIND]["robot_type"]
+    rtype = robot_type() if expected else None
+    if rtype and rtype != expected:
         problem("warn", "robot_type is %s (arms/grippers missing from the URDF)." % rtype,
-                "Bring the robot up as full_7dof_gripper if you use the arms.")
+                "Bring the robot up as %s if you use the arms." % expected)
 
     healthy = (bool(slaves) and all_op and not errored and not missing and not orphans
                and bool(procs) and not crash)
@@ -300,10 +372,12 @@ def diagnose(restarted_recently=False):
 # ---------------------------------------------------------------- robot diagnostics
 
 # Shown when a motor is tapped / in the CLI; the drive's own view, which the bus state misses.
+# Kangaroo's drives, then the names talos' drives use instead.
 DRIVE_KEYS = ("Driver state", "Error code", "Board errors", "Motor errors", "Gate driver errors",
               "Emergency stop", "Actual control mode", "Board status", "Motor status",
               "Motor temperature", "Board temperature", "Actual position",
-              "Actual absolute position")
+              "Actual absolute position",
+              "Driver error code", "CANopen SM state", "CANopen last error", "Drive temperature")
 
 
 def _unquote(v):
@@ -358,13 +432,16 @@ def read_robot_diagnostics():
               for st in statuses
               if st["level"] in (1, 2) and not st["name"].startswith("/Hardware/Motor/")
               and not any(n.startswith(st["name"] + "/") for n in names)]
-    emergency = {}
+    emergency, power = {}, {}
     for st in statuses:
         if st["name"] == "/Hardware/Emergency":
             emergency = st["values"]
+        elif st["name"] == "/Hardware/Power":  # talos: "Emergency": "No"
+            power = st["values"]
     # PAL's key really is "Is Emergency Waiting Rearmy".
     rearm = [v for k, v in emergency.items() if "Rearm" in k]
-    return {"estop": emergency.get("Emergency Stop On") == "True",
+    return {"estop": emergency.get("Emergency Stop On") == "True"
+                     or power.get("Emergency") in ("Yes", "True"),
             "rearm": bool(rearm) and rearm[0] == "True",
             "motors": motors, "others": others}
 
@@ -549,6 +626,9 @@ def homing_result(output):
 
 
 def cmd_homing(args):
+    if not FULL_HOMING:
+        print("%s has no full_homing motion; nothing to do." % ROBOT_KIND)
+        return 0
     d = diagnose_full()
     if not d["healthy"]:
         print_report(d, slaves=False)
@@ -591,18 +671,11 @@ def cmd_gripper(args):
     return code
 
 
-ESTOP_STEPS = [
-    "1. Press the e-stop and hold it 2-5 s.",
-    "2. Release the e-stop (twist it until it pops back up).",
-    "3. Re-arm: press the blinking red or yellow button on the robot.",
-]
-
-
 # ---------------------------------------------------------------- web
 
-PAGE = u"""<!doctype html>
+PAGE_TEMPLATE = u"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kangaroo Doctor</title>
+<title>{title}</title>
 <link rel="icon" id="favicon" type="image/svg+xml" href="/favicon.svg?off">
 <style>
 :root{--bg:#111;--card:#1c1c1c;--fg:#eee;--muted:#999;--ok:#1a7f37;--idle:#8a6d00;--err:#c62828;
@@ -660,13 +733,13 @@ details summary{cursor:pointer;color:var(--muted);font-size:.85em;margin-top:10p
 .muted{color:var(--muted);font-size:.85em}
 @media (max-width:520px){#body{grid-template-columns:1fr}}
 </style></head><body>
-<h1><span><img id="logo" src="/favicon.svg?off" alt="">Kangaroo Doctor</span> <small id="updated">connecting...</small></h1>
+<h1><span><img id="logo" src="/favicon.svg?off" alt="">{title}</span> <small id="updated">connecting...</small></h1>
 <div id="banner" class="off">checking...</div>
 <button id="next" class="primary hidden"></button>
 
 <div id="estop" class="card hidden">
   <h2>E-STOP POWER CYCLE (resets a frozen drive)</h2>
-  <ol id="estop-steps"></ol>
+  <ol id="estop-steps">{estop_steps}</ol>
   <div class="row">
     <button id="estop-done" class="primary">I re-armed it</button>
     <button onclick="showEstop(false)">Cancel</button>
@@ -688,8 +761,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:.85em;margin-top:10p
   <div id="actions">
     <button data-job="restart_deployer">Restart deployer<small>fixes most problems, ~30 s</small></button>
     <button data-estop>E-stop power cycle<small>if a motor stays in error</small></button>
-    <button data-job="full_homing" class="danger">Full homing<small>robot MOVES to home pose</small></button>
-    <button data-job="restart_bringup">Restart ros_bringup<small>if full homing is rejected</small></button>
+{homing_buttons}
     <button data-job="gripper_open">Open left gripper<small>checks that it really moves</small></button>
     <button data-job="gripper_close">Close left gripper<small>empty: must close fully</small></button>
   </div>
@@ -704,8 +776,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:.85em;margin-top:10p
 <div id="jobcard" class="card hidden"><h2 id="jobtitle">OUTPUT</h2><pre id="joblog"></pre></div>
 
 <script>
-const PARTS=[["Right arm",[14,15,16,17,18,19,20,21]],["Left arm",[24,25,26,27,28,29,30,31]],
-  ["Pelvis",[22,23],1],["Right leg",[1,2,3,4,5,6]],["Left leg",[7,9,8,11,10,12]],["Junctions",[0,13],1]];
+const PARTS={parts};
 const NEXT={restart:["Restart deployer","restart_deployer"],estop:["Start e-stop power cycle","estop"],rearm:null,
   wait:null,help:null};
 const CONFIRM={full_homing:"The robot will MOVE to the home pose. Is the area clear?",
@@ -714,8 +785,8 @@ const CONFIRM={full_homing:"The robot will MOVE to the home pose. Is the area cl
 let lastJob=null,estopTimer=null;
 const $=id=>document.getElementById(id);
 function el(tag,text,cls){const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;}
-function short(n){return n.replace(/^(arm|leg)_(left|right)_/,'').replace(/^gripper_(left|right)_finger$/,'grip')
-  .replace(/^pelvis_/,'').replace('length','len').replace('coupler','junc');}
+function short(n){return n.replace(/^(arm|leg)_(left|right)_/,'').replace(/^gripper_(left|right)(_finger)?$/,'grip')
+  .replace(/^(pelvis|torso|head)_/,'').replace(/^ft_(ankle|wrist)_(left|right)$/,'F/T').replace('length','len').replace('coupler','junc');}
 async function startJob(job){
   if(CONFIRM[job]&&!confirm(CONFIRM[job]))return;
   try{const r=await (await fetch('/job/'+job,{method:'POST'})).json();if(!r.success)alert(r.message);}
@@ -863,10 +934,26 @@ setInterval(poll,2000);poll();
 # The Kangaroo (headless torso with camera bar, curved arms, long legs; drawn after the photo on
 # pal-robotics.com/robot/kangaroo) with a doctor's cross whose color shows the state.
 FAVICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="0" y="0" width="64" height="64" rx="14" fill="#1f5fbf"/><polyline points="21,12 16.5,18 15.5,26 14.5,34" fill="none" stroke="#121417" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="11.6" y="33" width="5.6" height="5" rx="1.2" fill="#121417"/><polyline points="12.4,38 11,42" fill="none" stroke="#121417" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><polyline points="16.4,38 17.8,42" fill="none" stroke="#121417" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="21.5" cy="11.5" r="3.6" fill="#121417"/><rect x="22.8" y="35.5" width="7.4" height="5" rx="1.8" fill="#121417"/><polyline points="26.6,40 27.4,56" fill="none" stroke="#121417" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="23.8,40 24.8,53" fill="none" stroke="#121417" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><rect x="23.8" y="55.5" width="7.6" height="3.4" rx="1.4" fill="#121417"/><polyline points="43,12 47.5,18 48.5,26 49.5,34" fill="none" stroke="#121417" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="46.8" y="33" width="5.6" height="5" rx="1.2" fill="#121417"/><polyline points="51.6,38 53,42" fill="none" stroke="#121417" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><polyline points="47.6,38 46.2,42" fill="none" stroke="#121417" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="42.5" cy="11.5" r="3.6" fill="#121417"/><rect x="33.8" y="35.5" width="7.4" height="5" rx="1.8" fill="#121417"/><polyline points="37.4,40 36.6,56" fill="none" stroke="#121417" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="40.2,40 39.2,53" fill="none" stroke="#121417" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><rect x="32.6" y="55.5" width="7.6" height="3.4" rx="1.4" fill="#121417"/><rect x="22.5" y="6.5" width="19" height="23" rx="3.5" fill="#121417"/><rect x="28" y="8.2" width="8" height="2.2" rx="1.1" fill="#9fd8ff"/><polyline points="24.5,11.5 32,17.5 39.5,11.5" fill="none" stroke="#3a4250" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><polyline points="32,17.5 32,13" fill="none" stroke="#3a4250" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><rect x="29.6" y="20.3" width="4.8" height="1.5" rx="0.75" fill="#9fd8ff"/><rect x="24" y="30.5" width="16" height="5.5" rx="1.5" fill="#121417"/><polyline points="32,31.5 32,35" fill="none" stroke="#3a4250" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="50" r="12.5" fill="#1f5fbf"/><circle cx="50" cy="50" r="10" fill="{badge}"/><rect x="47.6" y="43.5" width="4.8" height="13" rx="1" fill="#ffffff"/><rect x="43.5" y="47.6" width="13" height="4.8" rx="1" fill="#ffffff"/></svg>'
+# Talos (white helmet with visor, orange shoulder rings and grippers; black body, forearms and
+# feet as on talos-7c; after pal-robotics.com's TALOS photo), same badge.
+TALOS_FAVICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="0" y="0" width="64" height="64" rx="14" fill="#1f5fbf"/><polyline points="20,19 17,26.5 15.5,32" fill="none" stroke="#121417" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="44,19 47,26.5 48.5,32" fill="none" stroke="#121417" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><rect x="12.3" y="32.4" width="6.6" height="3" rx="1" fill="#f08a24"/><path d="M13.2,35 L12.4,39.2 M18,35 L18.8,39.2" fill="none" stroke="#f08a24" stroke-width="1.7" stroke-linecap="round"/><rect x="45.1" y="32.4" width="6.6" height="3" rx="1" fill="#f08a24"/><path d="M50.8,35 L51.6,39.2 M46,35 L45.2,39.2" fill="none" stroke="#f08a24" stroke-width="1.7" stroke-linecap="round"/><rect x="29.8" y="12" width="4.4" height="4" fill="#121417"/><path d="M21.5,15.5 Q32,13.5 42.5,15.5 L41,29.5 Q32,31 23,29.5 Z" fill="#121417"/><circle cx="32" cy="20.5" r="2.1" fill="none" stroke="#e8edf2" stroke-width="1"/><rect x="23" y="30.2" width="18" height="5.2" rx="2" fill="#121417"/><line x1="24.5" y1="32.8" x2="39.5" y2="32.8" stroke="#3a4250" stroke-width="0.8"/><circle cx="19.5" cy="17.5" r="3.4" fill="#121417" stroke="#f08a24" stroke-width="1.6"/><circle cx="44.5" cy="17.5" r="3.4" fill="#121417" stroke="#f08a24" stroke-width="1.6"/><ellipse cx="32" cy="8.2" rx="4.8" ry="5.3" fill="#f2f4f6"/><rect x="28.4" y="6.4" width="7.2" height="3.3" rx="1.65" fill="#121417"/><polyline points="27.5,36 27,55" fill="none" stroke="#121417" stroke-width="6" stroke-linecap="round"/><polyline points="36.5,36 37,55" fill="none" stroke="#121417" stroke-width="6" stroke-linecap="round"/><circle cx="24" cy="45" r="1.2" fill="#e8edf2"/><circle cx="40" cy="45" r="1.2" fill="#e8edf2"/><rect x="22.6" y="55.2" width="8" height="3.6" rx="1.4" fill="#121417"/><rect x="33.4" y="55.2" width="8" height="3.6" rx="1.4" fill="#121417"/><circle cx="50" cy="50" r="12.5" fill="#1f5fbf"/><circle cx="50" cy="50" r="10" fill="{badge}"/><rect x="47.6" y="43.5" width="4.8" height="13" rx="1" fill="#ffffff"/><rect x="43.5" y="47.6" width="13" height="4.8" rx="1" fill="#ffffff"/></svg>'
+FAVICONS = {"kangaroo": FAVICON, "talos": TALOS_FAVICON}
 FAVICON_BADGE = {"ok": "#1a9f45", "bad": "#d32f2f", "busy": "#e0a000", "off": "#777777"}
 
-ESTOP_HTML = "".join("<li>%s</li>" % s.split(". ", 1)[1] for s in ESTOP_STEPS)
-PAGE = PAGE.replace('<ol id="estop-steps"></ol>', '<ol id="estop-steps">%s</ol>' % ESTOP_HTML)
+HOMING_BUTTONS = u"""    <button data-job="full_homing" class="danger">Full homing<small>robot MOVES to home pose</small></button>
+    <button data-job="restart_bringup">Restart ros_bringup<small>if full homing is rejected</small></button>"""
+BRINGUP_BUTTON = u"""    <button data-job="restart_bringup">Restart ros_bringup<small>if play_motion or bringup hangs</small></button>"""
+
+
+def make_page(robot):
+    # replace, not format: the page is full of { }.
+    fill = {"{title}": robot["title"], "{parts}": json.dumps(robot["parts"]),
+            "{homing_buttons}": HOMING_BUTTONS if robot["homing"] else BRINGUP_BUTTON,
+            "{estop_steps}": "".join("<li>%s</li>" % s.split(". ", 1)[1] for s in ESTOP_STEPS)}
+    page = PAGE_TEMPLATE
+    for key, value in fill.items():
+        page = page.replace(key, value)
+    return page
 
 
 # ---------------------------------------------------------------- controllers
@@ -935,16 +1022,17 @@ class Doctor(object):
 
     Runs one action (job) at a time; its output is shown on the page.
     """
-    JOBS = {
-        "restart_deployer": ("Restart deployer", RESTART_DEPLOYER),
-        "restart_bringup": ("Restart ros_bringup", RESTART_BRINGUP),
-        "full_homing": ("Full homing", FULL_HOMING),
-        "gripper_open": ("Open left gripper", GRIPPER % "open"),
-        "gripper_close": ("Close left gripper", GRIPPER % "close"),
-    }
     CONTROLLER_ACTIONS = ("start", "stop", "load", "load_start", "unload")
 
     def __init__(self):
+        self.jobs = {
+            "restart_deployer": ("Restart deployer", RESTART_DEPLOYER),
+            "restart_bringup": ("Restart ros_bringup", RESTART_BRINGUP),
+            "gripper_open": ("Open left gripper", GRIPPER % "open"),
+            "gripper_close": ("Close left gripper", GRIPPER % "close"),
+        }
+        if FULL_HOMING:
+            self.jobs["full_homing"] = ("Full homing", FULL_HOMING)
         self.diagnosis = None
         self.controllers = None
         self.robot_diag = None
@@ -1038,12 +1126,12 @@ class Doctor(object):
         return "\n".join(lines)
 
     def start(self, name):
-        if name not in self.JOBS:
+        if name not in self.jobs:
             return {"success": False, "message": "unknown job " + name}
         if name == "full_homing" and not (self.diagnosis or {}).get("healthy"):
             return {"success": False, "message": "Fix the problems first: full homing needs "
                                                  "all motors on."}
-        title, cmd = self.JOBS[name]
+        title, cmd = self.jobs[name]
         if name == "full_homing":
             steps = lambda job: homing_result(self._cmd(job, cmd))
         else:
@@ -1097,7 +1185,8 @@ class Doctor(object):
             if not jsc or jsc[0]["state"] != "running":
                 diagnosis = dict(diagnosis, problems=diagnosis["problems"] + [{
                     "level": "warn", "text": "joint_state_controller is not running: no joint "
-                                             "states, full homing will fail.",
+                                             "states" + (", full homing will fail." if FULL_HOMING
+                                                         else "."),
                     "fix": "Restart deployer (pal-start deployer alone does not start it)."}])
         return {"diagnosis": diagnosis, "controllers": ctrls, "job": self.job}
 
@@ -1118,7 +1207,7 @@ def make_handler(doctor):
                 self._reply(200, PAGE, "text/html; charset=utf-8")
             elif self.path.startswith("/favicon"):  # also /favicon.ico, which browsers ask for
                 state = self.path.partition("?")[2]
-                self._reply(200, FAVICON.replace("{badge}", FAVICON_BADGE.get(state, FAVICON_BADGE["ok"])),
+                self._reply(200, FAVICONS[ROBOT_KIND].replace("{badge}", FAVICON_BADGE.get(state, FAVICON_BADGE["ok"])),
                             "image/svg+xml")
             elif self.path == "/status":
                 self._reply(200, json.dumps(doctor.status()))
@@ -1159,10 +1248,12 @@ def main():
     ap.add_argument("command", nargs="?", default="web", choices=["web", "status", "fix", "homing", "gripper"])
     ap.add_argument("arg", nargs="?", help="gripper: open or close")
     ap.add_argument("--port", type=int, default=8001, help="web page port (default %(default)s)")
-    ap.add_argument("--robot", default=ROBOT, help="ssh target when not on the robot (default %(default)s)")
+    ap.add_argument("--robot", default=ROBOT, help="ssh target when not on the robot, e.g. "
+                    "pal@talos-7c (default %(default)s)")
     # rosrun/roslaunch may append __name:= and similar.
     args, _ = ap.parse_known_args()
     ROBOT = args.robot
+    use_robot(ROBOT_KIND if ON_ROBOT else robot_kind(ROBOT))
     return {"web": cmd_web, "status": cmd_status, "fix": cmd_fix, "homing": cmd_homing,
             "gripper": cmd_gripper}[args.command](args)
 

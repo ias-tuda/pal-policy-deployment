@@ -2,7 +2,7 @@
 <package format="2">
   <name>kangaroo_doctor</name>
   <version>0.1.0</version>
-  <description>Beginner page and CLI for kangaroo-5c: which EtherCAT slave fails, and the recovery steps (restart deployer, e-stop power cycle, restart ros_bringup for full_homing), and a left gripper check</description>
+  <description>Beginner page and CLI for kangaroo-5c and talos-7c: which EtherCAT slave fails, and the recovery steps (restart deployer, e-stop power cycle, restart ros_bringup for full_homing), and a left gripper check</description>
   <maintainer email="privat@claudiuskienle.de">Claudius Kienle</maintainer>
   <license>Apache 2.0</license>
 
