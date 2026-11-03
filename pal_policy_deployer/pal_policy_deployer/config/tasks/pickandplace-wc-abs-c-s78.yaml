@@ -22,7 +22,7 @@ model:
   # the same as pp_RCTP_s3). Unlike pp_RCTP_s3 it observes the commanded target
   # (commanded_target_rel, here joint_target_rel) instead of the last action; it is 0 at reset
   # (start_observation_distribution.json), as the inferer's target starts at the default pose.
-  model_path: /catkin_ws/src/models/siwei-pick-and-place/WC-ABS-c-s78/2026-10-01_04-25-37_pp_s78-WC-ABS-c_R-C-strict+M1+M2+M3+M6+J+M8_DR-scene_PPO-stack_slewstack_B_WC_toolnone_G20_effCTP_lagFP+JS_cmdobscmd_tgtWC_ep55_n2048_seed1.onnx
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/siwei-pick-and-place/WC-ABS-c-s78/2026-10-01_04-25-37_pp_s78-WC-ABS-c_R-C-strict+M1+M2+M3+M6+J+M8_DR-scene_PPO-stack_slewstack_B_WC_toolnone_G20_effCTP_lagFP+JS_cmdobscmd_tgtWC_ep55_n2048_seed1.onnx
   observation_terms: [joint_pos_rel, joint_vel, joint_target_rel, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw_b, goal_pos_b]
   action_dim: 8
   action_mode: joint_position
@@ -35,6 +35,9 @@ model:
 # Where things are, in base_link. The object pose comes from this TF frame (its origin must be
 # the cube centre).
 object_frame: cube_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/grasp-cube.yaml
 # The training object_yaw is the raw yaw, but the spawn covered only +-pi/4; fold the tracked
 # yaw of the symmetric cube into that range.
 object_yaw_symmetry: 4

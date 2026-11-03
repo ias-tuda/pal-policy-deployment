@@ -8,7 +8,7 @@ scene: {arrangement: A}
 # compensation (start joint_target_rel mean ~0), same actions, gains and robot as the
 # stack-cube run. No goal term (39 observations).
 model:
-  model_path: /catkin_ws/src/models/kangaroo-mug-turn/2026-10-01_09-27-23_mug-turn-release-ft2100_s123/model_2300.onnx
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/kangaroo-mug-turn/2026-10-01_09-27-23_mug-turn-release-ft2100_s123/model_2300.onnx
   observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_rot6d_b]
   action_dim: 8
   action_mode: delta_joint_position
@@ -22,6 +22,9 @@ model:
 # within +-60 deg of that and turns it to pi (handle towards the robot, within +-25 deg).
 # The mug has no symmetry, so object_yaw_symmetry stays 1.
 object_frame: mug_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/turn-mug.yaml
 # mock_object_position_b: [0.500, 0.100, -0.060]   # instead of object_frame: a fixed pose
 # mock_object_yaw_b: 0.0
 # Training saw a 5-8 step lag and dropout (p=0.01, 5-50 steps) on the mug terms, as grasp-cube;

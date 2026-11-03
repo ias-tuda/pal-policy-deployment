@@ -1,0 +1,5 @@
+[core]
+    remote = hetzner
+['remote "hetzner"']
+    url = ssh://u424789-sub5@u424789.your-storagebox.de:23/home/pal-policy-deployment
+    verify = true

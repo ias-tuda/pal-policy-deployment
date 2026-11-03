@@ -272,6 +272,12 @@ tf2::Matrix3x3 grasp_object_rot_b = tf2::Matrix3x3::getIdentity();
 // With object_yaw_symmetry n > 1 the tracked yaw is folded into [-pi/n, pi/n), e.g. 4 for a
 // cube whose training yaw covered only +-pi/4.
 int grasp_object_yaw_symmetry = 1;
+// A point fixed in the tracked object frame whose position object_pos_b reports instead of the
+// frame origin, e.g. a pin's centre when the mesh origin is on an end face.
+tf2::Vector3 grasp_object_offset_local(0.0, 0.0, 0.0);
+// The object's symmetry axis in its tracked frame, for object_tilt_b (e.g. a pin's long axis,
+// which depends on how its mesh was exported).
+tf2::Vector3 grasp_object_axis_local(0.0, 0.0, 1.0);
 // Jaw point (midpoint of the fingertip sites) of jaw_joints[i] in the frame of tip_links[i], for
 // jaw_to_object_b (3 values per jaw) and object_yaw_to_jaw (first jaw only): (jaw_mid_xy, z)
 // with z interpolated in jaw_mid_z over jaw_mid_q of the jaw's joint, one table for all jaws
@@ -283,10 +289,17 @@ std::vector<double> grasp_jaw_mid_q;
 std::vector<double> grasp_jaw_mid_z;
 // Tracked object TF frame; empty keeps the fixed mock_object_* values.
 std::string grasp_object_frame;
+// Read the object pose once at the policy start and keep it, instead of every step. Dry run
+// still follows the object, so the start check sees where it is now.
+bool grasp_latch_object = false;
+bool grasp_object_latched = false;
 // Optional base object (e.g. the cube to stack on): its TF position, read once, plus
 // goal_offset_b is the goal. Empty keeps the constant goal_position_b.
 std::string grasp_base_object_frame;
 std::vector<double> grasp_goal_offset_b;
+// A point fixed in the base object frame that goal_offset_b is added to, instead of the frame
+// origin: e.g. the centre of a block the tracker may report upside down (origin on its top face).
+tf2::Vector3 grasp_base_object_offset_local(0.0, 0.0, 0.0);
 bool grasp_goal_latched = false;
 // goal_yaw4_b: (cos 4psi, sin 4psi) of the base object's yaw psi about base_link z, for a
 // 4-fold symmetric base object (e.g. the open box of the put-into-box policy). Latched and
@@ -299,6 +312,21 @@ bool grasp_track_base_object = false;
 double grasp_base_object_alpha = 1.0;
 std::string grasp_base_link = "base_link";
 double grasp_object_timeout = 0.5;
+// Object TF outlier filter (not in dry run): a new reading more than grasp_object_max_jump m
+// from both the last accepted position and that position carried along with the first jaw since
+// (the object lying still or held) is ignored and the last pose kept (seen in training as
+// observation dropout), until readings away from it persist for grasp_object_jump_hold s (the
+// object did move, e.g. dropped). 0 disables.
+double grasp_object_max_jump = 0.0;
+double grasp_object_jump_hold = 0.5;
+bool grasp_object_valid = false;
+ros::Time grasp_object_stamp;
+ros::Time grasp_object_jump_since;
+tf2::Vector3 grasp_object_jaw_at_accept;
+bool grasp_object_jaw_at_accept_valid = false;
+// First jaw midpoint of the last observation, in base_link.
+tf2::Vector3 grasp_jaw_mid_b;
+bool grasp_jaw_mid_valid = false;
 std::unique_ptr<tf2_ros::Buffer> grasp_tf_buffer;
 std::unique_ptr<tf2_ros::TransformListener> grasp_tf_listener;
 double grasp_rate = 50.0;
@@ -324,7 +352,8 @@ int graspTermDim(const std::string& term)
     if (term == "tcp_pos_b") return 3 * grasp_tip_links.size();
     if (term == "object_pos_b" || term == "goal_pos_b" || term == "object_to_goal_b") return 3;
     if (term == "jaw_to_object_b") return grasp_jaw_joints.empty() ? -1 : 3 * grasp_jaw_joints.size();
-    if (term == "object_yaw_b" || term == "goal_yaw4_b") return 2;
+    if (term == "object_yaw_b" || term == "object_yaw_zero_b" || term == "goal_yaw4_b") return 2;
+    if (term == "object_yaw4_b" || term == "object_tilt_b" || term == "object_tilt_zero_b") return 2;
     if (term == "object_rot6d_b") return 6;
     if (term == "object_yaw_to_jaw") return grasp_jaw_joints.empty() ? -1 : 2;
     if (term == "tcp_quat_b") return 4 * grasp_tip_links.size();
@@ -991,6 +1020,10 @@ bool buildGraspObservation(std::vector<float>& obs)
         }
         jaw_mids.push_back(tip_frames[jaw] * KDL::Vector(grasp_jaw_mid_xy[0], grasp_jaw_mid_xy[1], z));
     }
+    if (!jaw_mids.empty()) {
+        grasp_jaw_mid_b = tf2::Vector3(jaw_mids[0].x(), jaw_mids[0].y(), jaw_mids[0].z());
+        grasp_jaw_mid_valid = true;
+    }
     if (!grasp_jaw_indices.empty()) {
         const KDL::Vector axis = tip_frames[0].M * KDL::Vector(1.0, 0.0, 0.0);
         jaw_axis_yaw = std::atan2(axis.y(), axis.x());
@@ -1019,6 +1052,25 @@ bool buildGraspObservation(std::vector<float>& obs)
         } else if (term == "object_yaw_b") {
             obs.insert(obs.end(), {static_cast<float>(std::cos(grasp_object_yaw_b)),
                                    static_cast<float>(std::sin(grasp_object_yaw_b))});
+        } else if (term == "object_yaw_zero_b") {
+            // A sphere has no yaw: pal_mjlab's object_yaw slot for a ball is the constant (1, 0).
+            obs.insert(obs.end(), {1.0f, 0.0f});
+        } else if (term == "object_tilt_zero_b") {
+            // A sphere has no axis: pal_mjlab's pin-tilt slot for a ball is the constant (0, 0).
+            obs.insert(obs.end(), {0.0f, 0.0f});
+        } else if (term == "object_yaw4_b") {
+            // (cos 4psi, sin 4psi), psi the yaw of the object's x axis projected on the
+            // base_link xy plane: a 4-fold symmetric object (the cross pin), flipped or not.
+            const double psi = std::atan2(grasp_object_rot_b[1][0], grasp_object_rot_b[0][0]);
+            obs.insert(obs.end(), {static_cast<float>(std::cos(4.0 * psi)),
+                                   static_cast<float>(std::sin(4.0 * psi))});
+        } else if (term == "object_tilt_b") {
+            // x, y of the object's axis (object_axis_local), flipped to point up (an
+            // end-for-end symmetric object); 0, 0 when upright.
+            const tf2::Vector3 axis = grasp_object_rot_b * grasp_object_axis_local;
+            const double sign = axis.z() < 0.0 ? -1.0 : 1.0;
+            obs.insert(obs.end(), {static_cast<float>(sign * axis.x()),
+                                   static_cast<float>(sign * axis.y())});
         } else if (term == "object_rot6d_b") {
             // The object's x axis, then its z axis, in base_link (columns 0 and 2): an upright
             // object with yaw a gives [cos a, sin a, 0, 0, 0, 1], as the training start range.
@@ -1144,10 +1196,19 @@ bool updateGraspGoal()
                           grasp_base_object_frame.c_str(), age);
         return grasp_goal_latched && grasp_track_base_object && !grasp_dry_run;
     }
-    const std::vector<double> goal = {t.x + grasp_goal_offset_b[0], t.y + grasp_goal_offset_b[1],
-                                      t.z + grasp_goal_offset_b[2]};
     const auto& r = tf.transform.rotation;
     const tf2::Quaternion quat(r.x, r.y, r.z, r.w);
+    tf2::Vector3 point(t.x, t.y, t.z);
+    if (!grasp_base_object_offset_local.isZero()) {
+        if (!std::isfinite(quat.length()) || quat.length() < 0.5) {
+            ROS_WARN_THROTTLE(1.0, "Grasp policy: base object TF %s has no valid rotation",
+                              grasp_base_object_frame.c_str());
+            return grasp_goal_latched && grasp_track_base_object && !grasp_dry_run;
+        }
+        point += tf2::Matrix3x3(quat.normalized()) * grasp_base_object_offset_local;
+    }
+    const std::vector<double> goal = {point.x() + grasp_goal_offset_b[0], point.y() + grasp_goal_offset_b[1],
+                                      point.z() + grasp_goal_offset_b[2]};
     double yaw4_cos = grasp_goal_yaw4_cos, yaw4_sin = grasp_goal_yaw4_sin;
     if (std::isfinite(quat.length()) && quat.length() > 0.5) {
         double roll, pitch, yaw;
@@ -1182,6 +1243,7 @@ bool updateGraspGoal()
 bool updateGraspObject()
 {
     if (grasp_object_frame.empty()) return true;
+    if (grasp_object_latched) return true;
     geometry_msgs::TransformStamped tf;
     try {
         tf = grasp_tf_buffer->lookupTransform(grasp_base_link, grasp_object_frame, ros::Time(0));
@@ -1205,7 +1267,33 @@ bool updateGraspObject()
     rot.getRPY(roll, pitch, yaw);
     if (!std::isfinite(t.x) || !std::isfinite(t.y) || !std::isfinite(t.z) || !std::isfinite(yaw))
         return false;
-    grasp_object_b = {t.x, t.y, t.z};
+    const tf2::Vector3 point = tf2::Vector3(t.x, t.y, t.z) + rot * grasp_object_offset_local;
+    if (grasp_object_max_jump > 0.0 && !grasp_dry_run && grasp_object_valid) {
+        // Only a new TF reading is checked; the same stamp is looked up again every step.
+        if (tf.header.stamp == grasp_object_stamp) return true;
+        grasp_object_stamp = tf.header.stamp;
+        const tf2::Vector3 last(grasp_object_b[0], grasp_object_b[1], grasp_object_b[2]);
+        double jump = point.distance(last);
+        if (grasp_jaw_mid_valid && grasp_object_jaw_at_accept_valid)
+            jump = std::min(jump, point.distance(last + grasp_jaw_mid_b - grasp_object_jaw_at_accept));
+        if (jump > grasp_object_max_jump) {
+            if (grasp_object_jump_since.isZero()) grasp_object_jump_since = tf.header.stamp;
+            const double held = (tf.header.stamp - grasp_object_jump_since).toSec();
+            if (held < grasp_object_jump_hold) {
+                ROS_WARN_THROTTLE(0.5, "Grasp object TF %s jumped %.3f m; keeping the last pose (%.2f s)",
+                                  grasp_object_frame.c_str(), jump, held);
+                return true;
+            }
+            ROS_WARN("Grasp object TF %s stayed %.3f m away for %.2f s; accepting the new pose",
+                     grasp_object_frame.c_str(), jump, held);
+        }
+        grasp_object_jump_since = ros::Time();
+    }
+    grasp_object_valid = true;
+    grasp_object_stamp = tf.header.stamp;
+    grasp_object_jaw_at_accept = grasp_jaw_mid_b;
+    grasp_object_jaw_at_accept_valid = grasp_jaw_mid_valid;
+    grasp_object_b = {point.x(), point.y(), point.z()};
     grasp_object_rot_b = rot;
     if (grasp_object_yaw_symmetry == 4) {
         // A cube: the tracker may report any face as up (e.g. its y axis), where the RPY yaw is
@@ -1222,6 +1310,13 @@ bool updateGraspObject()
         yaw -= period * std::floor(yaw / period + 0.5);
     }
     grasp_object_yaw_b = yaw;
+    if (grasp_latch_object && !grasp_dry_run) {
+        grasp_object_latched = true;
+        ROS_INFO("Grasp object latched from %s: [%.3f, %.3f, %.3f], yaw %.3f in %s",
+                 grasp_object_frame.c_str(), grasp_object_b[0], grasp_object_b[1], grasp_object_b[2],
+                 grasp_object_yaw_b,
+                 grasp_base_link.c_str());
+    }
     return true;
 }
 
@@ -1775,7 +1870,33 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     }
     nh.param<std::string>("object_frame", grasp_object_frame, "");
     nh.param("object_timeout", grasp_object_timeout, 0.5);
+    nh.param("object_max_jump", grasp_object_max_jump, 0.0);
+    nh.param("object_jump_hold", grasp_object_jump_hold, 0.5);
+    nh.param("latch_object", grasp_latch_object, false);
     nh.param("object_yaw_symmetry", grasp_object_yaw_symmetry, 1);
+    std::vector<double> object_offset_local;
+    if (nh.getParam("object_offset_local", object_offset_local)) {
+        if (object_offset_local.size() != 3 ||
+            !std::all_of(object_offset_local.begin(), object_offset_local.end(),
+                         [](double v) { return std::isfinite(v); })) {
+            ROS_ERROR("object_offset_local must have 3 finite values");
+            return false;
+        }
+        grasp_object_offset_local.setValue(object_offset_local[0], object_offset_local[1],
+                                           object_offset_local[2]);
+    }
+    std::vector<double> object_axis_local;
+    if (nh.getParam("object_axis_local", object_axis_local)) {
+        if (object_axis_local.size() != 3 ||
+            !std::all_of(object_axis_local.begin(), object_axis_local.end(),
+                         [](double v) { return std::isfinite(v); }) ||
+            tf2::Vector3(object_axis_local[0], object_axis_local[1], object_axis_local[2]).length() < 1e-6) {
+            ROS_ERROR("object_axis_local must have 3 finite values, not all zero");
+            return false;
+        }
+        grasp_object_axis_local = tf2::Vector3(object_axis_local[0], object_axis_local[1],
+                                               object_axis_local[2]).normalized();
+    }
     std::string tcp_quat_sign;
     nh.param<std::string>("tcp_quat_sign", tcp_quat_sign, "largest_positive");
     if (tcp_quat_sign != "largest_positive" && tcp_quat_sign != "w_positive") {
@@ -1829,6 +1950,17 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
             ROS_ERROR("Grasp config with base_object_frame requires a 3-value goal_offset_b");
             return false;
         }
+        std::vector<double> base_offset_local;
+        if (nh.getParam("base_object_offset_local", base_offset_local)) {
+            if (base_offset_local.size() != 3 ||
+                !std::all_of(base_offset_local.begin(), base_offset_local.end(),
+                             [](double v) { return std::isfinite(v); })) {
+                ROS_ERROR("base_object_offset_local must have 3 finite values");
+                return false;
+            }
+            grasp_base_object_offset_local.setValue(base_offset_local[0], base_offset_local[1],
+                                                    base_offset_local[2]);
+        }
         nh.param("track_base_object", grasp_track_base_object, false);
         nh.param("base_object_alpha", grasp_base_object_alpha, 1.0);
         if (!std::isfinite(grasp_base_object_alpha) || grasp_base_object_alpha <= 0.0 ||
@@ -1846,8 +1978,10 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
     if (!std::isfinite(grasp_rate) || grasp_rate <= 0.0 ||
         !std::isfinite(grasp_state_timeout) || grasp_state_timeout <= 0.0 ||
         !std::isfinite(grasp_object_yaw_b) ||
-        !std::isfinite(grasp_object_timeout) || grasp_object_timeout <= 0.0) {
-        ROS_ERROR("Grasp policy rate, timeouts and object yaw must be finite; rate and timeouts must be positive");
+        !std::isfinite(grasp_object_timeout) || grasp_object_timeout <= 0.0 ||
+        !std::isfinite(grasp_object_max_jump) || grasp_object_max_jump < 0.0 ||
+        !std::isfinite(grasp_object_jump_hold) || grasp_object_jump_hold < 0.0) {
+        ROS_ERROR("Grasp policy rate, timeouts, object yaw and object jump filter must be finite; rate and timeouts must be positive");
         return false;
     }
     return true;

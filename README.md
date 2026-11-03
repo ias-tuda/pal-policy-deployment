@@ -58,7 +58,7 @@ driven), the model, the instruction and the scene. Its name is also the recordin
 
 | Where | Step |
 | --- | --- |
-| Robot | 1. Start the default controller and run `full_homing`. |
+| Robot | 1. Start the default controller `roslaunch kangaroo_controller_configuration default_controllers.launch` and run `full_homing`. |
 | Robot | 2. On the 5m PC: reset `ntpd` (should not be required anymore - only if the supervisor complains about clocks being off). |
 | Robot | 3. Kill the default controller. |
 | Robot | 4. Start the web page: `rosrun policy_web_control policy_web_control.py` |
@@ -69,6 +69,8 @@ driven), the model, the instruction and the scene. Its name is also the recordin
 | Phone | 9. Open `http://<control PC IP>:8000`: **Go home**, turn recording on, **Start policy**, label the episode. |
 
 Another task: change `task:=` in steps 6 and 7 (for example `grasp-cube-upperbody`).
+To switch between the left-arm tasks without a relaunch (task page, one tap), see
+[Task switch](pal_policy_deployer/TASK_SWITCH.md).
 Episodes are saved under `/catkin_ws/ias-nas/home/oopsie-data/<task>/<date>/<episode_id>/`.
 
 ## Run in simulation

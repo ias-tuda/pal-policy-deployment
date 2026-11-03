@@ -1,0 +1,21 @@
+# Replace the tracked objects with the objects of another objects YAML, without
+# restarting the node. The segmentation model stays loaded; one new FoundationPose
+# TensorRT session is created per object of the new task.
+#
+# The YAML and every mesh it names are validated before anything changes. If that
+# check fails, the current task keeps running and success is false. Once the switch
+# starts, the old objects stop publishing at once (pose topics and TF frames).
+#
+# ``objects_cfg`` is an absolute path or a path relative to ROOT_DIR.
+# ``reselect`` ignores the prompt cache next to the YAML and opens the prompt window.
+# ``timeout`` is how long to wait, in seconds, for every new object to be registered
+# and published. The wait does not count time spent in the prompt window. A timeout
+# of 0 returns as soon as the request is validated and queued.
+string objects_cfg
+bool reselect
+float32 timeout
+---
+bool success
+string message
+# tf_child_frame_id of every object of the new task, in objects-config order.
+string[] tf_frames

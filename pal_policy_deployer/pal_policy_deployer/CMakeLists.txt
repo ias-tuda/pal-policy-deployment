@@ -17,6 +17,10 @@ add_message_files(FILES
   StampedFloat64Array.msg
 )
 
+add_service_files(FILES
+  SetTask.srv
+)
+
 generate_messages(DEPENDENCIES std_msgs)
 
 catkin_package(
@@ -36,6 +40,7 @@ catkin_install_python(PROGRAMS
 install(PROGRAMS scripts/move_to_start_config.py scripts/spawn_grasp_controller.py
   scripts/check_start_distribution.py scripts/joint_state_to_trajectory.py scripts/move_and_deploy.sh
   scripts/policy_supervisor.py scripts/episode_recorder.py scripts/task_config.py
+  scripts/restore_leg_pose.py scripts/task_web_control.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 foreach(dir config launch models)

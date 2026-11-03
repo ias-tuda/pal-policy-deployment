@@ -1,0 +1,74 @@
+# A task: what the robot is asked to do with a robot part. The file name is the task name; see
+# pickandplace-wc-abs-c-s78.yaml for what each key does.
+robot: left_arm_nogravcomp
+instruction: Put the ball into the box
+# oopsie-data counts a different instruction or scene layout as a distinct task (at most 200
+# episodes count per task).
+scene: {arrangement: A}
+record_task: put-ball-into-box
+
+# The model contract. It must match the robot part: joint set and order, and gravity
+# compensation (trained without it, so the robot is left_arm_nogravcomp). Order matters.
+model:
+  # pp_s15_PB-DR_s1_it4000 (pal_mjlab Mjlab-PickPlace-Pal-Kangaroo-Grippers, §15 PB-DR; see
+  # DEPLOYMENT.md beside the model): a Ø 50 mm ball (trained on Ø 48-52) picked on WC and dropped
+  # into the chamfer of §12's socket block (the pin task's block_1), both on WC, the block at any
+  # yaw, the table at -0.063 in base_link. §12's 42-D layout: left arm and left jaw, absolute
+  # joint targets, G20 gains, the stack task's slew rates, the raw last action (CMD_OBS=act).
+  # For a ball the object yaw slot is the constant (1, 0) and the pin tilt slot (0, 0). Same
+  # start pose and gains as pininsert-s12-in-t-s2.
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/Kangaroo_put_ball_to_box/pp_s15_PB-DR_s1_it4000/model_4000.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw_zero_b, goal_pos_b, goal_yaw4_b, object_tilt_zero_b]
+  action_dim: 8
+  action_mode: joint_position
+  # Training's effort band torque is the joint actfrcrange, 0.7 of the actuator effort_limit
+  # (EFFORT=CTP: 35 Nm on arm 1-2, 17.5 Nm on arm 3-7); env.yaml records only effort_limit.
+  effort_band_fraction: 0.7
+  # The training ee_orientation_b makes w >= 0.
+  tcp_quat_sign: w_positive
+
+# object_pos_b is the ball's CENTRE: ball_1's origin must be the sphere centre, and its mesh the
+# Ø 50 mm ball (a resting ball reads z ~ -0.038; training start z [-0.053, -0.021]).
+object_frame: ball_1
+# block_1 as in pininsert-s12-in-t-s2.yaml (same block and mesh, s12_block_m.obj): its origin is
+# the centre of a face on the hole's axis (z 0 ... 0.056), and FoundationPose also reports it
+# upside down. The goal, the bottom-face centre, is the block's centre (28 mm along its own z,
+# either way up) minus 28 mm in base_link z.
+base_object_frame: block_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/ball-block.yaml
+base_object_offset_local: [0.0, 0.0, 0.028]
+goal_offset_b: [0.0, 0.0, -0.028]
+# Training tracked the block live with a 5-8 step lag; the hand may push it on the way in.
+track_base_object: true
+base_object_alpha: 0.2   # low-pass on the followed block pose per tick (1 = none)
+# Beyond object_timeout the inferer skips steps and the supervisor stops the policy after
+# running_timeout. Training (LAG=FP) saw a 5-8 step (0.10-0.16 s) lag on the ball and the block;
+# feed the raw poses, do not compensate it.
+object_timeout: 4.0
+# As mug-ball: ball_1 can jump onto the gripper when the fingers hide the ball. Ignore a reading
+# more than object_max_jump m from the last accepted pose unless it persists object_jump_hold s.
+object_max_jump: 0.10       # m
+object_jump_hold: 0.5       # s
+
+supervisor:
+  # Start is blocked only when a feature is outside the training [min, max] widened by these
+  # margins; smaller misses are shown as notes.
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    last_action: 0.15
+    tcp_pos_b: 0.03          # m
+    tcp_quat_b: 0.1
+    object_pos_b: 0.03       # m
+    object_yaw_zero_b: 0.05
+    goal_pos_b: 0.02         # m
+    goal_yaw4_b: 0.05
+    object_tilt_zero_b: 0.05
+  # While the policy runs, stop it when the ball leaves the box of the training start ranges of
+  # the ball and the goal, widened by the margin, for running_ood_frames frames, or when no
+  # observation (stale joint state or TF) arrives.
+  running_ood_terms: [object_pos_b]
+  running_ood_margin: 0.3    # m

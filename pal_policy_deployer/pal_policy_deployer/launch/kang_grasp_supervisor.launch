@@ -7,6 +7,7 @@
   <arg name="launch_args" default="" doc="Extra args for kang_grasp_upperbody_deployer.launch." />
   <arg name="home_args" default="_position_tolerance:=0.1" doc="Extra args for the home move launch file (_position_tolerance:=0.1 is the arg position_tolerance)." />
   <arg name="require_ready" default="true" doc="Refuse ~start while ~readiness is not ready." />
+  <arg name="tracker" default="/tracking_fp_plus_so3_trt_node" doc="The FoundationPose tracker node; the startup task and set_task switch it to the task's tracker_objects. Empty leaves the tracker alone." />
   <arg name="start_controllers" default="false" doc="false when kang_grasp_controllers.launch already runs." />
   <arg name="record" default="true" doc="Run episode_recorder.py; recording itself is switched on the web page." />
   <arg name="record_dir" default="/catkin_ws/ias-nas/home/oopsie-data" doc="Episodes go to record_dir/task/date/episode." />
@@ -26,6 +27,7 @@
     <param name="launch_args" value="$(arg launch_args)" />
     <param name="home_args" value="$(arg home_args)" />
     <param name="require_ready" value="$(arg require_ready)" />
+    <param name="tracker" value="$(arg tracker)" />
     <!-- The OOD margins and running-stop thresholds are in the task's supervisor: block. -->
   </node>
 

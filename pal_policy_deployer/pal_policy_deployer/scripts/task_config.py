@@ -21,7 +21,7 @@ import rospy
 import yaml
 
 CONFIG = os.path.join(rospkg.RosPack().get_path("pal_policy_deployer"), "config")
-TASK_ONLY = ("robot", "instruction", "scene", "name", "record_task")  # Not copied into the deployment config.
+TASK_ONLY = ("robot", "instruction", "scene", "name", "record_task", "tracker_objects")  # Not copied into the deployment config.
 
 
 def _path(kind, name):
@@ -76,6 +76,28 @@ def resolve(task_name="", robot_name=""):
     if not robot_name:
         raise ValueError("task {} names no robot (config/robots/)".format(task["name"]))
     return task, deployment_config(task, _path("robots", robot_name))
+
+
+def switchable_tasks(robot_name):
+    """[(task, robot)] of the tasks in config/tasks/ whose robot drives the same joints as
+    robot_name: the controllers switch between them in place (spawn_grasp_controller.py)."""
+    def joints(name):
+        robot = _load(_path("robots", name))
+        return robot.get("impedance_joint_names"), robot.get("position_joint_names")
+    cache = {}
+    result = []
+    for file_name in sorted(os.listdir(os.path.join(CONFIG, "tasks"))):
+        if not file_name.endswith(".yaml"):
+            continue
+        try:
+            robot = load_task(file_name[:-5]).get("robot", "")
+            if robot not in cache:
+                cache[robot] = joints(robot)
+        except (OSError, ValueError, yaml.YAMLError):
+            continue
+        if cache[robot] == joints(robot_name):
+            result.append((file_name[:-5], robot))
+    return result
 
 
 def node_config():

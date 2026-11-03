@@ -11,7 +11,7 @@ scene: {arrangement: A}
 # The model contract. It must match the robot part: joint set and order, and gravity
 # compensation (trained with it: the start joint_target_rel mean is ~0, so no preload). Order matters.
 model:
-  model_path: /catkin_ws/src/models/kangaroo-grasp-cube/2026-09-29_17-52-16_grasp-la-gc-v36-s25-nt-wide-pat-drop-lean-track-scratch_s123/model_300.onnx
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/kangaroo-grasp-cube/2026-09-29_17-52-16_grasp-la-gc-v36-s25-nt-wide-pat-drop-lean-track-scratch_s123/model_300.onnx
   # grasp-la-gc-v36-s25-nt-wide-pat-drop-lean-track: left arm and left jaw, jaw-relative object
   # observations (38).
   observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_yaw_to_jaw, object_to_goal_b]
@@ -22,6 +22,9 @@ model:
 # Where things are, in base_link. The object pose comes from this TF frame. The goal is a
 # constant; training samples x [0.45, 0.55], y [0.04, 0.18], z [0.055, 0.115] once per episode.
 object_frame: cube_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/grasp-cube.yaml
 # mock_object_position_b: [0.500, 0.109, -0.057]   # instead of object_frame: a fixed pose
 # mock_object_yaw_b: 0.0
 goal_position_b: [0.499, 0.111, 0.085]
@@ -30,6 +33,10 @@ goal_position_b: [0.499, 0.111, 0.085]
 # on top of a 5-8 step lag, so up to ~1.16 s old). Beyond object_timeout the inferer skips steps
 # and the supervisor stops the policy after running_timeout.
 object_timeout: 2.0
+# latch_object: true reads the object pose once when the policy starts and keeps it for the
+# whole run (no online update); jaw-relative terms are still recomputed from it every step.
+# The start check (dry run) still follows the object. Default false.
+latch_object: false
 
 supervisor:
   # Start is blocked only when a feature is outside the training [min, max] widened by these
@@ -49,3 +56,8 @@ supervisor:
   # policy pushes or drops a few cm outside the start range.
   running_ood_terms: [object_to_goal_b]
   running_ood_margin: 0.3    # m
+  # The object TF must arrive at most object_stamp_max_age s after its stamp (median over the
+  # last object_stamp_window messages) and be stamped at most object_stamp_max_future s ahead
+  # of this host's clock; otherwise the start is blocked and a running policy stopped.
+  object_stamp_max_age: 0.5      # s
+  object_stamp_max_future: 0.05  # s

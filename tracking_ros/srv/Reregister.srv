@@ -1,0 +1,16 @@
+# Force a fresh FoundationPose registration and define the active tracking set.
+#
+# ``objects`` names which objects to (re-)register and actively track from now
+# on. Each entry is either a tf_child_frame_id (e.g. "lamp_base") or a numeric
+# object_id as a string (e.g. "0"). Objects that are listed are re-registered
+# from a fresh segmentation mask and then tracked and published every frame;
+# objects that are NOT listed go idle -- they stop being tracked and stop
+# publishing until a later call includes them again.
+#
+# An empty list selects every configured object (the original "re-register all"
+# behaviour), so an empty request is fully backwards compatible.
+string[] objects
+---
+# Mirrors std_srvs/Trigger's response so existing success/message handling works.
+bool success
+string message

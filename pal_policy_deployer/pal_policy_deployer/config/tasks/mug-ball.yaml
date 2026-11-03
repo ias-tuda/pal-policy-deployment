@@ -1,0 +1,62 @@
+# Drop the ball into the upright mug with the left-arm mug-ball policy. See grasp-cube.yaml for
+# what each key does.
+robot: left_arm_gravcomp
+instruction: Put the ball into the mug
+scene: {arrangement: A}
+
+# mug-kugel-force (kangaroo-mug-ball): left arm and left jaw, trained with gravity compensation
+# (start joint_target_rel mean ~0), same start pose, actions and gains as the mug-coaster run.
+# No object rotation term (a ball): the mug-coaster observations without object_rot6d_b (36).
+model:
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/kangaroo-mug-ball/2026-10-08_23-16-24_mug-kugel-force_s123/model_2000.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_to_goal_b]
+  action_dim: 8
+  action_mode: delta_joint_position
+  target_preload: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# The object is the ball (0.04 m diameter); its position comes from this TF frame.
+object_frame: ball_1
+# mock_object_position_b: [0.450, 0.110, -0.043]   # instead of object_frame: a fixed pose
+# mock_object_yaw_b: 0.0
+
+# Training (goal_pose, reference mug, offset z 0.1115) puts the goal 0.1115 m above the mug
+# origin and follows the mug. Ball and mug spawn on the table at x [-0.04, 0.08] around the
+# table spawn centre, y [-0.04, 0.26], at least 0.12 m apart. At the start object_to_goal_b z is
+# 0.128-0.175 (mean 0.153), so the sim mug origin is ~0.06 m above the table, the body centre
+# like the mug_1 frame of mug-turn.yaml; x, y are within +-0.13 and +-0.30.
+base_object_frame: mug_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/mug-ball.yaml
+# x, y shifted +0.02 from training (0, 0): while the ball is in the jaw the fingers hide part of
+# it and ball_1 reads ~(+0.015, +0.03, +0.01) off the jaw, so with (0, 0) the real ball was
+# released ~0.02 m in front of (-x) and right of (-y) the mug centre and missed the mug
+# (2026-10-09_10-15-50). Was [0.0, 0.0, 0.1115].
+goal_offset_b: [0.00, 0.0, 0.1115]
+object_timeout: 4.0
+# ball_1 sometimes jumps 0.15-0.6 m for a reading (onto the gripper when it hides the ball, or a
+# false detection far away), which stopped the policy as "object out of range". Ignore a reading
+# more than object_max_jump m from the last accepted ball pose and keep that pose, unless the
+# readings stay away for object_jump_hold s (the ball did move). ball_1 updates at ~4 Hz and the
+# arm moves up to ~0.25 m/s, so a real move between readings is ~0.06 m. Not in dry run.
+object_max_jump: 0.10       # m
+object_jump_hold: 0.5       # s
+# Follow the mug if the arm pushes it; the last goal is held while mug_1 is stale.
+track_base_object: true
+base_object_alpha: 0.1   # low-pass on the followed goal per tick (1 = none)
+
+supervisor:
+  object_stamp_max_age: 3.0      # s
+  object_stamp_max_future: 0.05  # s
+
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    joint_target_rel: 0.15   # rad
+    jaw_to_object_b: 0.03    # m
+    object_to_goal_b: 0.03   # m
+  # Stop when the ball (relative to the goal above the mug) leaves the training start range
+  # widened by the margin (a tracking error, not the ball carried to the mug).
+  running_ood_terms: [object_to_goal_b]
+  running_ood_margin: 0.3    # m

@@ -1,0 +1,25 @@
+# Leg + pelvis pose restored by restore_leg_pose.py (kang_grasp_controllers.launch legs:=true).
+# Length joints: left 0.664, right 0.657 (full_homing uses 0.600), set by hand after the
+# 2026-10-08 leg calibration. motor_absolute_encoder is for reference only: if it differs a lot
+# at the same joint positions, the encoder zeros changed.
+captured: 2026-10-08 06:32:44 UTC
+controllers:
+  left_leg_controller:
+    joints: [leg_left_1_joint, leg_left_2_joint, leg_left_3_joint, leg_left_length_joint,
+      leg_left_4_joint, leg_left_5_joint]
+    positions: [-0.011962, 0.054314, 0.040216, 0.663968, -0.052482, 0.000453]
+    tracking_error: [-0.0, -0.000111, -0.000143, -1.0e-06, -0.000203, -0.000155]
+  pelvis_controller:
+    joints: [pelvis_1_joint, pelvis_2_joint]
+    positions: [4.3e-05, 5.0e-06]
+    tracking_error: [-0.0, -0.0]
+  right_leg_controller:
+    joints: [leg_right_1_joint, leg_right_2_joint, leg_right_3_joint, leg_right_length_joint,
+      leg_right_4_joint, leg_right_5_joint]
+    positions: [0.012189, 0.053978, -0.040711, 0.656959, 0.018733, -0.1225]
+    tracking_error: [-0.000122, -1.3e-05, 0.000323, -1.0e-06, 0.031292, -0.053406]
+motor_absolute_encoder: {leg_left_1_motor: -0.012272, leg_left_2_motor: 0.0, leg_left_3_motor: 0.046019,
+  leg_left_4_motor: -0.056757, leg_left_5_motor: -0.055223, leg_left_length_motor: 0.1369,
+  leg_right_1_motor: 0.01534, leg_right_2_motor: 0.050621, leg_right_3_motor: -0.042951,
+  leg_right_4_motor: -0.053689, leg_right_5_motor: 0.087437, leg_right_length_motor: 0.1356,
+  pelvis_1_motor: 0.003044, pelvis_2_motor: 0.001798}

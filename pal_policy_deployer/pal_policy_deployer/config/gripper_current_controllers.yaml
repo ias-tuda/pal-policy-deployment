@@ -1,0 +1,43 @@
+# PAL support's current-based gripper controllers (effort JointTrajectoryController, tuned by PAL
+# for the gripper motor). kang_grasp_controllers.launch jaw_control:=current starts them for
+# the jaws in the robot's position_joint_names instead of DirectPositionControl in
+# subscriber_controller, whose motor position loop raises MotorForceSensorFail when the
+# fingers are blocked by the object.
+gripper_left_current_controller:
+  type: "effort_controllers/JointTrajectoryController"
+  check_mode: True
+  joints:
+    - gripper_left_finger_joint
+  gains: # Required because we're controlling an effort interface
+    # PAL's p: 100 (current in A per rad of error, capped at the 3 A drive limit) squeezed every
+    # grasp at 3 A: the policy commands ~0.3 rad past the object, and the non-backdrivable jaw
+    # then jammed shut (2026-10-09: stuck at 0.72 while pushing open at 2.25 A). p: 5 grips
+    # with ~1.5 A at 0.3 rad and still opens from closed at the 3 A cap.
+    gripper_left_finger_joint: {p: 5,  d: 0, i: 0, i_clamp: 1}
+  constraints:
+    goal_time: &goal_time_constraint 0.6
+    stopped_velocity_tolerance: &stopped_velocity_constraint 0.05
+    gripper_left_finger_joint:
+      goal: &goal_pos_constraint 0.02
+
+  stop_trajectory_duration: 0.0
+
+
+gripper_right_current_controller:
+  type: "effort_controllers/JointTrajectoryController"
+  check_mode: True
+  joints:
+    - gripper_right_finger_joint
+  gains: # Required because we're controlling an effort interface
+    # PAL's p: 100 (current in A per rad of error, capped at the 3 A drive limit) squeezed every
+    # grasp at 3 A: the policy commands ~0.3 rad past the object, and the non-backdrivable jaw
+    # then jammed shut (2026-10-09: stuck at 0.72 while pushing open at 2.25 A). p: 5 grips
+    # with ~1.5 A at 0.3 rad and still opens from closed at the 3 A cap.
+    gripper_right_finger_joint: {p: 5,  d: 0, i: 0, i_clamp: 1}
+  constraints:
+    goal_time: *goal_time_constraint
+    stopped_velocity_tolerance: *stopped_velocity_constraint
+    gripper_right_finger_joint:
+      goal: *goal_pos_constraint
+
+  stop_trajectory_duration: 0.0

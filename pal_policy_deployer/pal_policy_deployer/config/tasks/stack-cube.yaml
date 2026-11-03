@@ -7,7 +7,8 @@ scene: {arrangement: A}
 # stack-std-scratch (kangaroo_stack_standing): left arm and left jaw, trained with gravity
 # compensation, jaw-relative object observations (38). Same layout as the grasp-cube model.
 model:
-  model_path: /catkin_ws/src/models/kangaroo-stack-cube/2026-09-29_20-36-22_stack-std-scratch_s123/model_4200.onnx
+  # model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/kangaroo-stack-cube/2026-09-29_20-36-22_stack-std-scratch_s123/model_4200.onnx
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/kangaroo-stack-cube/2026-10-08_09-02-14_stack-release-ft1000_s456/model_1500.onnx
   observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, jaw_to_object_b, object_yaw_to_jaw, object_to_goal_b]
   action_dim: 8
   action_mode: delta_joint_position
@@ -20,14 +21,20 @@ model:
 # must not move afterwards. goal_position_b is not used here.
 object_frame: cube_1
 base_object_frame: cube_2
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/stack-cube.yaml
 # TODO: set to the stacked height of cube_1's centre above cube_2's centre (one cube edge
 # length if both TF origins are at the cube centre); z = 0.0 is a placeholder.
 goal_offset_b: [0.0, 0.0, 0.05]
-object_timeout: 2.0
+object_timeout: 4.0
 track_base_object: true
 base_object_alpha: 0.1   # low-pass on the followed goal per tick (1 = none)
 
 supervisor:
+  object_stamp_max_age: 3.0      # s
+  object_stamp_max_future: 0.05  # s
+
   ood_margin: 0.05
   ood_margins:
     joint_pos_rel: 0.15      # rad

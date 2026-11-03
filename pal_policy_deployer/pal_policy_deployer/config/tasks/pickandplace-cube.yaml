@@ -18,7 +18,7 @@ record_task: pickandplace-cube
 model:
   # pp_RCTP_s3 (pal_mjlab kangaroo-pick-and-place): left arm and left jaw, absolute joint
   # targets, observations in base_link (38). Trained without gravity compensation (G20 gains).
-  model_path: /catkin_ws/src/models/siwei-pick-and-place/pp_RCTP_s3/model_4999.onnx
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/siwei-pick-and-place/pp_RCTP_s3/model_4999.onnx
   observation_terms: [joint_pos_rel, joint_vel, last_action, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw_b, goal_pos_b]
   action_dim: 8
   action_mode: joint_position
@@ -31,6 +31,9 @@ model:
 # Where things are, in base_link. The object pose comes from this TF frame (its origin must be
 # the cube centre).
 object_frame: cube_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/grasp-cube.yaml
 # mock_object_position_b: [0.400, 0.270, -0.060]   # instead of object_frame: a fixed pose
 # mock_object_yaw_b: 0.0
 # The training object_yaw is the raw yaw, but the spawn covered only +-pi/4; fold the tracked

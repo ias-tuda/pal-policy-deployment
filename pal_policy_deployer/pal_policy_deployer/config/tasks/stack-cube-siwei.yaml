@@ -14,7 +14,7 @@ model:
   # STSA-c. Left arm and left jaw, absolute joint targets, G20 gains, the stack task's slew
   # rates, observations in base_link (38): the deployment contract of pickandplace-dep1-wc-c-s1
   # (commanded target observed, CMD_OBS=cmd), with goal_pos_b the stacking goal.
-  model_path: /catkin_ws/src/models/siwei-stack/pp_s91_SC-FT_s1_it4500/model_4500.onnx
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/siwei-stack/pp_s91_SC-FT_s1_it4500/model_4500.onnx
   observation_terms: [joint_pos_rel, joint_vel, joint_target_rel, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw_b, goal_pos_b]
   action_dim: 8
   action_mode: joint_position
@@ -32,6 +32,9 @@ object_frame: cube_1
 # The training cube yaw covered +-pi/4; fold the tracked yaw of the symmetric cube into it.
 object_yaw_symmetry: 4
 base_object_frame: cube_2
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/stack-cube.yaml
 goal_offset_b: [0.0, 0.0, 0.05]
 track_base_object: true
 base_object_alpha: 0.1   # low-pass on the followed goal per tick (1 = none)

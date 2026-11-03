@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>tracking_ros</name>
+  <version>0.0.0</version>
+  <description>
+    The service interface of the FoundationPose tracker (tracking_ros in the tracker's
+    ros1_ws), so that the supervisor in this container can call it. Only the .srv files;
+    keep them identical to the tracker's, because ROS checks their md5 sum.
+  </description>
+  <maintainer email="daniel.dennert@dare-robotics.org">Daniel Dennert</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
+</package>

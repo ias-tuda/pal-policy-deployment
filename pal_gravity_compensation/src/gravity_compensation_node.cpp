@@ -254,26 +254,28 @@ class GravityCompensationNode {
   // Reads the gains of PAL's DirectImpedanceControl, which is a joint PD sent as effort:
   // tau = stiffness_factor * (q_des - q) + damping_factor * (qd_des - qd) + effort, where
   // effort is the gravity feedforward published here. publish() uses the same law to
-  // budget the feedforward against the effort limits.
+  // budget the feedforward against the effort limits. The gains are read on every cycle from
+  // the parameter cache (the master pushes changes), so a task switch that changes them live
+  // also changes the budget; an incomplete update keeps the last valid gains.
   bool loadGains() {
-    if (have_gains_) return true;
-    if (ros::WallTime::now() < gain_retry_after_) return false;
+    if (!have_gains_ && ros::WallTime::now() < gain_retry_after_) return false;
     gain_retry_after_ = ros::WallTime::now() + ros::WallDuration(0.5);
-    stiffness_.clear();
-    damping_.clear();
+    std::vector<double> stiffness_values, damping_values;
     for (const auto& name : arm_names_) {
       const std::string ns = "/" + controller_name_ + "/joints/" + name + "/impedance_params";
       double stiffness, damping;
-      if (!ros::param::get(ns + "/stiffness_factor", stiffness) ||
-          !ros::param::get(ns + "/damping_factor", damping) ||
+      if (!ros::param::getCached(ns + "/stiffness_factor", stiffness) ||
+          !ros::param::getCached(ns + "/damping_factor", damping) ||
           !std::isfinite(stiffness) || stiffness <= 0.0 ||
           !std::isfinite(damping) || damping < 0.0) {
         ROS_WARN_THROTTLE(2.0, "Waiting for valid impedance gains at %s", ns.c_str());
-        return false;
+        return have_gains_;
       }
-      stiffness_.push_back(stiffness);
-      damping_.push_back(damping);
+      stiffness_values.push_back(stiffness);
+      damping_values.push_back(damping);
     }
+    stiffness_ = stiffness_values;
+    damping_ = damping_values;
     have_gains_ = true;
     return true;
   }

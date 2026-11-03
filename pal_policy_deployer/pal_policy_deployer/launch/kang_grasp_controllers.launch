@@ -3,11 +3,18 @@
        every joint in NoControl; spawn_grasp_controller.py then puts the robot's
        impedance_joint_names in direct_impedance_control with the env.yaml gains of the model, its
        position_joint_names (the jaws) in DirectPositionControl, and with gravity_compensation:
-       true it runs the gravity bridge of the robot's gravity_compensation_config. -->
+       true it runs the gravity bridge of the robot's gravity_compensation_config.
+       jaw_control:=current leaves the jaws in NoControl and drives them with PAL's
+       current-based gripper controllers (config/gripper_current_controllers.yaml) instead. -->
   <arg name="task" default="grasp-cube" doc="Task file in config/tasks/, for its robot and model." />
   <arg name="robot" default="" doc="Replaces the task's robot (a name in config/robots/ or a path)." />
   <arg name="config" default="" doc="A deployment config file instead of task and robot." />
+  <arg name="jaw_control" default="current" doc="current: PAL's current-based gripper controllers drive the jaws (no MotorForceSensorFail on a blocked jaw); position: DirectPositionControl in subscriber_controller. Switching needs reload_controller:=true." />
   <arg name="reload_controller" default="false" doc="true restarts a subscriber_controller left running with other parameters; the arms drop while it restarts, so support them first." />
+  <arg name="legs" default="true" doc="Start PAL's leg and pelvis position controllers and move them to leg_pose." />
+  <arg name="leg_pose" default="$(find pal_policy_deployer)/config/leg_poses/default.yaml" doc="Pose file for restore_leg_pose.py." />
+  <arg name="leg_joints" default="" doc="Regex of the joints moved to leg_pose; the others are held where they are. Empty moves all legs and pelvis joints." />
+  <arg name="leg_max_jump" default="0.3" doc="restore_leg_pose.py refuses when a joint is further than this from leg_pose." />
   <include file="$(find subscriber_controller)/launch/kangaroo_subscriber_controller.launch">
     <arg name="spawn_controller" value="false" />
     <arg name="local_joint_control_type" value="no_control" />
@@ -28,5 +35,17 @@
     <param name="robot" value="$(arg robot)" />
     <param name="config" value="$(arg config)" />
     <param name="reload" value="$(arg reload_controller)" />
+    <param name="jaw_control" value="$(arg jaw_control)" />
   </node>
+
+  <!-- The subscriber controller leaves the legs and pelvis in NoControl, so PAL's position
+       controllers hold them; restore_leg_pose.py starts them (reusing running ones) and moves
+       them to the stored pose. They keep running after this launch ends. -->
+  <group if="$(arg legs)">
+    <rosparam command="load" file="$(find kangaroo_controller_configuration)/config/joint_trajectory_controllers/position/leg_left.yaml" />
+    <rosparam command="load" file="$(find kangaroo_controller_configuration)/config/joint_trajectory_controllers/position/leg_right.yaml" />
+    <rosparam command="load" file="$(find kangaroo_controller_configuration)/config/joint_trajectory_controllers/position/pelvis.yaml" />
+    <node pkg="pal_policy_deployer" type="restore_leg_pose.py" name="restore_leg_pose" output="screen"
+          args="--pose $(arg leg_pose) --joints '$(arg leg_joints)' --max-jump $(arg leg_max_jump) --execute --yes" />
+  </group>
 </launch>

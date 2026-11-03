@@ -1,0 +1,78 @@
+# A task: what the robot is asked to do with a robot part. The file name is the task name; see
+# pickandplace-wc-abs-c-s78.yaml for what each key does.
+robot: left_arm_nogravcomp
+instruction: Insert the pin into the block
+# oopsie-data counts a different instruction or scene layout as a distinct task (at most 200
+# episodes count per task).
+scene: {arrangement: A}
+record_task: insert-pin-into-block
+
+# The model contract. It must match the robot part: joint set and order, and gravity
+# compensation (trained without it, so the robot is left_arm_nogravcomp). Order matters.
+model:
+  # pp_s12_IN-T_s2_it5999 (pal_mjlab Mjlab-PickPlace-Pal-Kangaroo-Grippers, §12.1 insert-t; see
+  # DEPLOYMENT.md beside the model): the cross pin pushed through the socket block, both on WC at
+  # any yaw, the table at -0.063 in base_link (as S10.2). Left arm and left jaw, absolute joint
+  # targets, G20 gains, the stack task's slew rates, observations in base_link (42), the raw last
+  # action (CMD_OBS=act). Unlike the box task, object_yaw is (cos 4psi, sin 4psi) of the pin
+  # (object_yaw4_b) and the pin's tilt (object_tilt_b) comes last.
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/kangaroo_pin_insert/pp_s12_IN-T_s2_it5999/model_5999.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw4_b, goal_pos_b, goal_yaw4_b, object_tilt_b]
+  action_dim: 8
+  action_mode: joint_position
+  # Training's effort band torque is the joint actfrcrange, 0.7 of the actuator effort_limit
+  # (EFFORT=CTP: 35 Nm on arm 1-2, 17.5 Nm on arm 3-7); env.yaml records only effort_limit.
+  effort_band_fraction: 0.7
+  # The training ee_orientation_b makes w >= 0.
+  tcp_quat_sign: w_positive
+
+# FoundationPose publishes both objects as TF frames from the CAD meshes
+# (cad/s12_insert/s12_pin_m.obj, s12_block_m.obj): pin_1 and block_1.
+# pin_1's origin is the centre of one end face and its long axis the mesh z (z 0 ... 0.090), so
+# object_pos_b is that origin + 45 mm along its own z axis: the pin's centre either way up
+# (end-for-end symmetric). Checked 2026-10-08 after re-registering: a standing pin read z down,
+# the origin on its top face (depth camera: top -0.008), centre -0.045 on a -0.091 table.
+# A bad registration read the pin 90 deg off (its mesh y vertical): object_tilt_b near 1, the
+# start check blocks it; re-register the pin.
+object_frame: pin_1
+object_offset_local: [0.0, 0.0, 0.045]
+object_axis_local: [0.0, 0.0, 1.0]
+# block_1's origin is the centre of a face on the hole's axis (mesh z 0 ... 0.056; checked
+# 2026-10-08 against the depth camera). The block is the same top and bottom, so FoundationPose
+# also reports it upside down (z axis down, origin on the top face). The goal, the bottom-face
+# centre, is therefore taken from the block's centre (28 mm along its own z, either way up)
+# minus 28 mm in base_link z.
+base_object_frame: block_1
+base_object_offset_local: [0.0, 0.0, 0.028]
+goal_offset_b: [0.0, 0.0, -0.028]
+# The block is pushed ~1 cm on the way in (MuJoCo median); training tracked it live with a
+# 5-8 step lag.
+track_base_object: true
+base_object_alpha: 0.2   # low-pass on the followed block pose per tick (1 = none)
+# Beyond object_timeout the inferer skips steps and the supervisor stops the policy after
+# running_timeout. Training (LAG=FP) saw a 5-8 step (0.10-0.16 s) lag on the pin and the block;
+# feed the raw poses, do not compensate it.
+object_timeout: 2.0
+
+supervisor:
+  # Start is blocked only when a feature is outside the training [min, max] widened by these
+  # margins; smaller misses are shown as notes.
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    last_action: 0.15
+    tcp_pos_b: 0.03          # m
+    tcp_quat_b: 0.1
+    object_pos_b: 0.03       # m
+    object_yaw4_b: 0.05
+    goal_pos_b: 0.02         # m
+    goal_yaw4_b: 0.05
+    # Trained at +-0.02 (a standing pin); FoundationPose can read a standing pin up to ~13 deg
+    # tilted (0.22, 2026-10-08), so the start check allows 0.25 beyond the training range.
+    object_tilt_b: 0.25
+  # While the policy runs, stop it when the pin leaves the box of the training start ranges of
+  # the pin and the goal, widened by the margin, for running_ood_frames frames, or when no
+  # observation (stale joint state or TF) arrives.
+  running_ood_terms: [object_pos_b]
+  running_ood_margin: 0.3    # m

@@ -21,7 +21,7 @@ model:
   # (38). Trained without gravity compensation (G20 gains), the stack task's slew rates, spawn W2,
   # target B. Like WC-ABS-c-s78 it observes the commanded target (CMD_OBS=cmd, here
   # joint_target_rel), 0 at reset; the action scales differ and are read from params/env.yaml.
-  model_path: /catkin_ws/src/models/siwei-pick-and-place/pp_dep1_T-c_s2_it4999/model_4999.onnx
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/siwei-pick-and-place/pp_dep1_T-c_s2_it4999/model_4999.onnx
   observation_terms: [joint_pos_rel, joint_vel, joint_target_rel, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw_b, goal_pos_b]
   action_dim: 8
   action_mode: joint_position
@@ -34,6 +34,9 @@ model:
 # Where things are, in base_link. The object pose comes from this TF frame (its origin must be
 # the cube centre).
 object_frame: cube_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/grasp-cube.yaml
 # The training object_yaw is the raw yaw, but the spawn covered only +-pi/4; fold the tracked
 # yaw of the symmetric cube into that range.
 object_yaw_symmetry: 4

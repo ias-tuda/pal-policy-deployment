@@ -67,7 +67,14 @@ and gravity compensation (`target_preload`).
 Common to both:
 
 - Arm joints run in `DirectImpedanceControl` (a joint PD) with the stiffness and damping read
-  from `params/env.yaml` beside the ONNX model. Jaws run in `DirectPositionControl`.
+  from `params/env.yaml` beside the ONNX model.
+- Jaws (`jaw_control:=current`, the default) run under PAL's current-based gripper controllers
+  (`config/gripper_current_controllers.yaml`, `gripper_*_current_controller`). The jaws stay in
+  `NoControl` in `subscriber_controller`, and a `joint_state_to_trajectory.py` node
+  (`jaw_trajectory_bridge`) forwards their targets from `/subscriber_controller/desired_state`.
+  PAL's `gripper_*_controller` are stopped first. `jaw_control:=position` puts the jaws back in
+  `DirectPositionControl`, whose motor position loop raises `MotorForceSensorFail` when the
+  object blocks the fingers. Switching between the two needs `reload_controller:=true`.
   `spawn_grasp_controller.py` sets these before the controllers start.
 - The inferer reads `deployment_start_config.json` beside the ONNX model for the start pose.
 - `start_observation_distribution.json` beside the model is the training start distribution
@@ -90,6 +97,42 @@ rosservice call /pal_policy_supervisor/stop
 
 One job runs at a time. `kang_grasp_supervisor.launch` also starts `episode_recorder.py`
 (`record:=false` to skip it).
+
+**Switch the task without a relaunch.** One command; a running policy or home move is
+stopped first, as `~stop` does:
+
+```bash
+rosservice call /pal_policy_supervisor/set_task mug-upright
+```
+
+The supervisor calls `/spawn_grasp_controller/set_task` of the running
+`kang_grasp_controllers.launch`, loads the new task and moves to its start pose. The controllers
+change in place, without a `subscriber_controller` restart: the impedance gains ramp to the new
+model's in 2 s through `dynamic_reconfigure`, and the gravity bridge starts (it first holds the
+measured arm pose) or stops. This covers the robots with the same joints, `left_arm_gravcomp`
+and `left_arm_nogravcomp`; other joints need a relaunch with `reload_controller:=true`. Hand-set
+supervisor params (`~ood_margin`, `~start_config_path`, ...) apply to the startup task only.
+`episode_recorder.py` keeps its startup task, so run with `record:=false` when you switch.
+
+Step by step: [TASK_SWITCH.md](TASK_SWITCH.md).
+
+**Task page.** `rosrun pal_policy_deployer task_web_control.py` (in the container, beside the
+supervisor) serves `http://<this PC's IP>:8003`: one button per task of the supervisor's `~tasks`
+(G2 and G3), a fixed STOP (`~stop`) and whether the supervisor, the controllers (the task's
+config and gravity bridge) and the tracker (the task's objects YAML) run the current task. A
+tap switches at once; it asks first only while a policy or home move runs. **Re-register tracking**
+(`trigger_reregister`, all objects of the tracker's task) repairs a tracker on the wrong object. Object positions
+are not checked there; `policy_web_control` (port 8000) still starts the policy.
+
+The FoundationPose tracker switches first, to the task's `tracker_objects` (an objects YAML of
+the tracker, relative to its `ROOT_DIR`); the supervisor also switches it at startup. The tracker
+runs outside the container on the same ROS master; `tracking_ros` here holds only its `.srv`
+files, which must stay identical to the tracker's. A YAML the tracker refuses refuses the whole
+switch. The switch does not wait for the objects: if the tracker is not reachable, the switch
+is retried every 2 s; when the new objects have no TF after `~tracker_first_wait` (30 s), they are
+re-registered every `~tracker_retry_period` (10 s) until they arrive. `~readiness` shows what the
+tracker waits for in its notes. A task without `tracker_objects` (`pininsert-s12-in-t-s2`,
+`mug-handover`) leaves the tracker as it is; `tracker:=` (empty) leaves it alone for every task.
 
 **Readiness.** While idle, the supervisor runs the inferer with `dry_run:=true`, which
 publishes an observation only while the joint state and the object TF are fresh. `start` is
@@ -152,7 +195,7 @@ rosrun pal_policy_deployer move_and_deploy.sh $M/deployment_start_config.json co
 
 ## Add a new model
 
-1. Put the ONNX model in `/catkin_ws/src/models/<name>/`, together with `params/env.yaml`,
+1. Put the ONNX model in `/catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/<name>/`, together with `params/env.yaml`,
    `deployment_start_config.json` and `start_observation_distribution.json`.
 2. Copy the nearest task in `config/tasks/`. Set `robot:` (the robot part the model was trained
    for), `instruction:`, and under `model:` the `model_path`, `observation_terms`, `action_dim`
@@ -165,7 +208,7 @@ A new robot part or drive mode (other joints, with or without gravity compensati
 file in `config/robots/`.
 
 Supported observation terms: `joint_pos_rel`, `joint_vel`, `last_action`, `joint_target_rel`,
-`tcp_pos_b`, `tcp_quat_b`, `object_pos_b`, `object_yaw_b`, `object_rot6d_b`, `goal_pos_b`,
+`tcp_pos_b`, `tcp_quat_b`, `object_pos_b`, `object_yaw_b`, `object_yaw_zero_b` (a ball: always (1, 0)), `object_tilt_zero_b` (a ball: always (0, 0)), `object_rot6d_b`, `goal_pos_b`,
 `jaw_to_object_b`, `object_yaw_to_jaw`, `object_to_goal_b`. `jaw_to_object_b` has 3 values per
 jaw of `jaw_joints` (jaw i on `tip_links[i]`; `jaw_joint` for one jaw); `object_yaw_to_jaw`
 uses the first jaw. `joint_target_rel` is the commanded target minus the default pose, also for

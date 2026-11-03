@@ -48,7 +48,9 @@ with P 50, D 1 and no I. It stops about 0.04 rad short of the target, for exampl
 0.086 for a 0.0475 target. This matches the real robot, where PAL drives the gripper
 with a position `JointTrajectoryController`. `kang_grasp_controllers.launch` switches the
 left gripper to `DirectPositionControl`, with its config in
-`pal_policy_deployer/config/local_joint_control/`.
+`pal_policy_deployer/config/local_joint_control/`. That is `jaw_control:=position`; the default `jaw_control:=current` leaves the
+jaws in `NoControl` here and drives them with PAL's current-based gripper controllers
+instead (see `pal_policy_deployer/README.md`).
 
 The URDF limits the gripper joints to effort 0.1. Controllers that clamp to URDF limits,
 such as `effort_controllers/JointPositionController`, therefore cannot drive the gripper

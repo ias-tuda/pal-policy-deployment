@@ -42,8 +42,12 @@ def feature_labels(term, dim, joint_names, joint_vel_names):
         return list(joint_names)
     if term == "joint_vel" and len(joint_vel_names) == dim:
         return list(joint_vel_names)
-    if term == "object_yaw_b" and dim == 2:
+    if term in ("object_yaw_b", "object_yaw_zero_b") and dim == 2:
         return ["cos", "sin"]
+    if term in ("object_yaw4_b", "goal_yaw4_b") and dim == 2:
+        return ["cos4", "sin4"]
+    if term in ("object_tilt_b", "object_tilt_zero_b") and dim == 2:
+        return ["x", "y"]
     if term == "object_yaw_to_jaw" and dim == 2:
         return ["cos4d", "sin4d"]
     if term == "object_rot6d_b" and dim == 6:
@@ -72,8 +76,17 @@ def check_observation(observation, config_terms, distribution, joint_names, join
     offset = 0
     for term, (train_name, stats) in zip(config_terms, distribution):
         dim = len(stats["mean"])
-        tol = float(term_tolerances.get(term, term_tolerances.get(train_name, tolerance)))
+        # A term's tolerance is one value, or one per feature (e.g. [x, y, z] for a position).
+        term_tol = term_tolerances.get(term, term_tolerances.get(train_name, tolerance))
+        if isinstance(term_tol, (list, tuple)):
+            if len(term_tol) != dim:
+                raise ValueError("tolerance of {} has {} values, the term {}".format(
+                    term, len(term_tol), dim))
+            tols = [float(value) for value in term_tol]
+        else:
+            tols = [float(term_tol)] * dim
         for i, label in enumerate(feature_labels(term, dim, joint_names, joint_vel_names)):
+            tol = tols[i]
             value = observation[offset + i]
             low, high = stats["min"][i] - tol, stats["max"][i] + tol
             std = stats["std"][i]

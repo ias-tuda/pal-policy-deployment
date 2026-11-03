@@ -1,0 +1,65 @@
+# A task: what the robot is asked to do with a robot part. The file name is the task name; see
+# pickandplace-wc-abs-c-s78.yaml for what each key does.
+robot: left_arm_nogravcomp
+instruction: Pick up the ball and place it at the goal
+# oopsie-data counts a different instruction or scene layout as a distinct task (at most 200
+# episodes count per task).
+scene: {arrangement: A}
+record_task: pickandplace-ball
+
+# The model contract. It must match the robot part: joint set and order, and gravity
+# compensation (trained without it, so the robot is left_arm_nogravcomp). Order matters.
+model:
+  # pp_s81_WB-JW_s2_it10000 (pal_mjlab Mjlab-PickPlace-Pal-Kangaroo-Grippers, S8.1,
+  # deployment_info.yaml beside the model): a 6 cm ball (trained on 55-65 mm) picked and placed
+  # on a table goal, both on WC, the table at -0.063 in base_link. Left arm and left jaw, absolute
+  # joint targets, G20 gains, the stack task's slew rates, observations in base_link (38), the
+  # commanded target as the action observation (CMD_OBS=cmd). Same start pose and gains as
+  # pininsert-s12-in-t-s2. The ball's yaw slot is the constant (1, 0) (object_yaw_zero_b).
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/kangaroo-pick-ball/pp_s81_WB-JW_s2_it10000/model_10000.onnx
+  observation_terms: [joint_pos_rel, joint_vel, joint_target_rel, tcp_pos_b, tcp_quat_b, object_pos_b, object_yaw_zero_b, goal_pos_b]
+  action_dim: 8
+  action_mode: joint_position
+  # Training's effort band torque is the joint actfrcrange, 0.7 of the actuator effort_limit
+  # (EFFORT=CTP: 35 Nm on arm 1-2, 17.5 Nm on arm 3-7); env.yaml records only effort_limit.
+  effort_band_fraction: 0.7
+  # The training ee_orientation_b makes w >= 0.
+  tcp_quat_sign: w_positive
+
+# Where things are, in base_link. object_pos_b is the ball's CENTRE: ball_1's origin must be the
+# sphere centre (check against the depth camera: a resting 6 cm ball reads z ~ -0.033).
+object_frame: ball_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/ball_60.yaml
+# The goal is the ball centre resting on the table: training samples x [0.39, 0.61],
+# y [-0.05, 0.27], z [-0.043, -0.023] (table -0.063 + r 0.03), once per episode. x 0.56 as in
+# pickandplace-cube (at 0.50 the goal is just below the torso-front camera view). Place the ball
+# at least 0.1 m away.
+goal_position_b: [0.56, 0.11, -0.033]
+# Beyond object_timeout the inferer skips steps and the supervisor stops the policy after
+# running_timeout. Training (LAG=FP+JS) saw a lag on the object terms; feed the raw poses.
+object_timeout: 4.0
+# As mug-ball: ball_1 can jump onto the gripper when the fingers hide the ball. Ignore a reading
+# more than object_max_jump m from the last accepted pose unless it persists object_jump_hold s.
+object_max_jump: 0.10       # m
+object_jump_hold: 0.5       # s
+
+supervisor:
+  # Start is blocked only when a feature is outside the training [min, max] widened by these
+  # margins; smaller misses are shown as notes.
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    joint_target_rel: 0.15   # rad
+    tcp_pos_b: 0.03          # m
+    tcp_quat_b: 0.1
+    object_pos_b: 0.03       # m
+    object_yaw_zero_b: 0.05
+    goal_pos_b: 0.02         # m
+  # While the policy runs, stop it when the ball leaves the box of the training start ranges of
+  # the ball and the goal, widened by the margin, for running_ood_frames frames, or when no
+  # observation (stale joint state or TF) arrives.
+  running_ood_terms: [object_pos_b]
+  running_ood_margin: 0.3    # m

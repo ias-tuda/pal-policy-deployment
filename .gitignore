@@ -287,3 +287,6 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+# Local-only: nested models repo (1.2 GB, own TU GitLab remote) and per-user Claude settings
+/models/
+.claude/settings.local.json

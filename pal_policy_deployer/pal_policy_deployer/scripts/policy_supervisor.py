@@ -5,8 +5,17 @@ Services (std_srvs/Trigger):
   ~start    run the deployer launch (~deploy_command); refused while a job runs or when not ready
   ~stop     interrupt the running job (policy or home move)
   ~go_home  stop the policy, then move to the start pose (~home_command)
+  ~set_task (pal_policy_deployer/SetTask) switch to another task: the controllers of
+            kang_grasp_controllers.launch first (~controller_service; they change the gains and
+            start or stop the gravity bridge in place), then this node, then move to the new
+            start pose. The object tracker (~tracker) switches before the controllers, to
+            the task's tracker_objects; it is not waited for (see Tracker). A running policy
+            or home move is stopped first; on a failure the previous task stays. The
+            TASK_PARAMS overrides apply to the startup task only.
 Topics:
   ~state      std_msgs/String, latched: "idle", "policy" or "home"
+  ~task       std_msgs/String, latched JSON {"task", "robot", "config_path"}
+  ~tasks      std_msgs/String, latched JSON [{"task", "robot"}], the tasks ~set_task accepts
   ~log        std_msgs/String, one message per output line of the jobs
   ~readiness  std_msgs/String, latched JSON {"ready", "reasons", "notes"}
 
@@ -41,12 +50,20 @@ import rospy
 import yaml
 from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import Trigger, TriggerResponse
+from pal_policy_deployer.srv import SetTask, SetTaskResponse
 from tf2_msgs.msg import TFMessage
+from tracking_ros.srv import Reregister, SwitchTask
 
 from check_start_distribution import check_observation, load_distribution
-from task_config import node_config, setting
+from task_config import resolve, setting, switchable_tasks
 
 STRICT_TOLERANCE = 0.005
+# The task switch of kang_grasp_controllers.launch (spawn_grasp_controller.py).
+CONTROLLER_SERVICE = "/spawn_grasp_controller/set_task"
+# The FoundationPose tracker (tracking_ros); it runs outside this container on the same master.
+TRACKER = "/tracking_fp_plus_so3_trt_node"
+# A tracked object counts as seen when its TF arrived within this time.
+TRACKER_FRESH = 1.0
 
 
 class Job(object):
@@ -96,7 +113,10 @@ class Readiness(object):
         self._lock = threading.Lock()
         self._samples = collections.deque()
         self.last_warning = (0.0, "")
-        rospy.Subscriber(topic, Float64MultiArray, self._callback, queue_size=10)
+        self._subscriber = rospy.Subscriber(topic, Float64MultiArray, self._callback, queue_size=10)
+
+    def close(self):
+        self._subscriber.unregister()
 
     def _callback(self, msg):
         with self._lock:
@@ -167,7 +187,10 @@ class RunGuard(object):
         self._startup_timeout = startup_timeout
         self._lock = threading.Lock()
         self._on_trip = None
-        rospy.Subscriber(topic, Float64MultiArray, self._callback, queue_size=10)
+        self._subscriber = rospy.Subscriber(topic, Float64MultiArray, self._callback, queue_size=10)
+
+    def close(self):
+        self._subscriber.unregister()
 
     def arm(self, on_trip):
         with self._lock:
@@ -227,7 +250,10 @@ class ObjectStampCheck(object):
         self._max_age = max_age
         self._ages = collections.deque(maxlen=window)
         self._lock = threading.Lock()
-        rospy.Subscriber("/tf", TFMessage, self._callback, queue_size=100)
+        self._subscriber = rospy.Subscriber("/tf", TFMessage, self._callback, queue_size=100)
+
+    def close(self):
+        self._subscriber.unregister()
 
     def _callback(self, msg):
         now = rospy.Time.now()
@@ -253,15 +279,149 @@ class ObjectStampCheck(object):
         return None
 
 
+class Tracker(object):
+    """Switches the object tracker to a task's objects YAML, then re-registers the objects
+    until their TF frames arrive. A task switch never waits for the objects: while the
+    tracker's services are absent, the switch is retried in the background."""
+
+    def __init__(self, namespace, log, first_wait, retry_period):
+        self._switch_service = namespace + "/switch_task"
+        self._reregister_service = namespace + "/trigger_reregister"
+        self._log = log
+        self._first_wait = first_wait
+        self._retry_period = retry_period
+        self._lock = threading.Lock()
+        # One service call at a time, so that a background retry cannot reach the tracker
+        # after a newer switch.
+        self._call_lock = threading.Lock()
+        self._generation = 0
+        self._objects = None  # The objects YAML the tracker must run; None leaves it alone.
+        self._frames = None  # Its TF frames once the tracker accepted it.
+        self._accepted = 0.0
+        self._next_try = 0.0
+        self._attempts = 0
+        self._seen = False
+        self._last_tf = {}
+        self._subscriber = rospy.Subscriber("/tf", TFMessage, self._callback, queue_size=100)
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _callback(self, msg):
+        now = time.monotonic()
+        with self._lock:
+            frames = self._frames or ()
+            for transform in msg.transforms:
+                if transform.child_frame_id in frames:
+                    self._last_tf[transform.child_frame_id] = now
+
+    def _fresh_locked(self):
+        # TF that arrived in the first second after the switch can still be the old objects'.
+        since = max(self._accepted + TRACKER_FRESH, time.monotonic() - TRACKER_FRESH)
+        return bool(self._frames) and all(self._last_tf.get(frame, 0.0) > since
+                                          for frame in self._frames)
+
+    def _accept_locked(self, objects, frames):
+        self._objects, self._frames = objects, list(frames)
+        self._accepted = time.monotonic()
+        self._next_try = self._accepted + self._first_wait
+        self._attempts = 0
+        self._seen = False
+        self._last_tf = {}
+
+    def switch(self, objects):
+        """Switch the tracker to objects (an objects YAML, absolute or relative to the
+        tracker's ROOT_DIR); None leaves the tracker as it is. Raise RuntimeError when the
+        tracker refuses the YAML; it then keeps its current objects."""
+        with self._lock:
+            if objects is not None and objects == self._objects and self._fresh_locked():
+                return "tracker keeps {}".format(objects)
+            self._generation += 1
+            self._objects, self._frames = objects, None
+            self._next_try = 0.0
+        if objects is None:
+            return "tracker unchanged (the task has no tracker_objects)"
+        with self._call_lock:
+            try:
+                rospy.wait_for_service(self._switch_service, timeout=2.0)
+                response = rospy.ServiceProxy(self._switch_service, SwitchTask)(objects, False, 0.0)
+            except (rospy.ROSException, rospy.ServiceException) as error:
+                return "tracker not reachable ({}); the switch to {} is retried".format(error, objects)
+            if not response.success:
+                with self._lock:
+                    self._objects = None
+                raise RuntimeError("tracker: " + response.message)
+            with self._lock:
+                self._accept_locked(objects, response.tf_frames)
+        return "tracker: {} ({})".format(objects, ", ".join(response.tf_frames))
+
+    def status(self):
+        """None when the tracker sees the task's objects or is left alone, else what it waits for."""
+        with self._lock:
+            if self._objects is None or self._seen:
+                return None
+            if self._frames is None:
+                return "tracker not reachable; the switch to {} is retried".format(self._objects)
+            missing = [frame for frame in self._frames
+                       if time.monotonic() - self._last_tf.get(frame, 0.0) > TRACKER_FRESH]
+            return "tracker waits for {} (re-registered {} times)".format(
+                ", ".join(missing or self._frames), self._attempts)
+
+    def _loop(self):
+        while not rospy.is_shutdown():
+            time.sleep(0.5)
+            with self._lock:
+                if self._frames is not None and not self._seen and self._fresh_locked():
+                    self._seen = True
+                    self._log("tracker sees {}".format(", ".join(self._frames)))
+                if self._objects is None or self._seen or time.monotonic() < self._next_try:
+                    continue
+                generation, objects, frames = self._generation, self._objects, self._frames
+            with self._call_lock:
+                with self._lock:
+                    if generation != self._generation:
+                        continue
+                try:
+                    if frames is None:
+                        rospy.wait_for_service(self._switch_service, timeout=0.5)
+                        response = rospy.ServiceProxy(self._switch_service, SwitchTask)(
+                            objects, False, 0.0)
+                    else:
+                        with self._lock:
+                            self._attempts += 1
+                            self._next_try = time.monotonic() + self._retry_period
+                        self._log("tracker does not see {}; re-register".format(", ".join(frames)))
+                        response = rospy.ServiceProxy(self._reregister_service, Reregister)(frames)
+                except (rospy.ROSException, rospy.ServiceException) as error:
+                    with self._lock:
+                        # An absent tracker is polled more often than a re-register is repeated.
+                        self._next_try = time.monotonic() + (self._retry_period if frames else 2.0)
+                    if frames is not None:
+                        self._log("tracker re-register failed: {}".format(error))
+                    continue
+                with self._lock:
+                    if generation != self._generation:
+                        continue
+                    if frames is None and response.success:
+                        self._accept_locked(objects, response.tf_frames)
+                        self._log("tracker: {} ({})".format(objects, ", ".join(response.tf_frames)))
+                    elif frames is None:
+                        # The YAML stays invalid; a retry cannot help.
+                        self._objects = None
+                        self._log("tracker refuses {}: {}".format(objects, response.message))
+                    elif not response.success:
+                        self._log("tracker re-register refused: {}".format(response.message))
+
+    def close(self):
+        self._subscriber.unregister()
+
+
 class Supervisor(object):
     """Runs at most one job (policy or home move) and the observer while the policy is off."""
 
-    def __init__(self, commands, readiness, run_guard, stamp_check, require_ready):
-        self._commands = commands
-        self._readiness = readiness
-        self._run_guard = run_guard
-        self._stamp_check = stamp_check
+    def __init__(self, setup, require_ready, controller_service, tracker=None):
+        """tracker: (namespace, first_wait, retry_period) of the object tracker, or None.
+        Raises RuntimeError when the tracker refuses the startup task's objects."""
         self._require_ready = require_ready
+        self._controller_service = controller_service
         self._lock = threading.Lock()
         self._job = None
         self._observer = None
@@ -270,9 +430,19 @@ class Supervisor(object):
         self._state_pub = rospy.Publisher("~state", String, queue_size=1, latch=True)
         self._log_pub = rospy.Publisher("~log", String, queue_size=100)
         self._readiness_pub = rospy.Publisher("~readiness", String, queue_size=1, latch=True)
+        self._task_pub = rospy.Publisher("~task", String, queue_size=1, latch=True)
+        # The tasks set_task can switch to: the same joints as the startup task's robot.
+        self._tasks_pub = rospy.Publisher("~tasks", String, queue_size=1, latch=True)
+        self._tasks_pub.publish(String(json.dumps(
+            [{"task": task, "robot": robot} for task, robot in switchable_tasks(setup.robot)])))
+        self._tracker = Tracker(tracker[0], self._log, *tracker[1:]) if tracker else None
+        if self._tracker:
+            self._log(self._tracker.switch(setup.tracker_objects))
+        self._use(setup)
         self._state_pub.publish(String("idle"))
         for name, callback in (("start", self.start), ("stop", self.stop), ("go_home", self.go_home)):
             rospy.Service("~" + name, Trigger, self._trigger(callback))
+        rospy.Service("~set_task", SetTask, self._handle_set_task)
         # Wall-clock thread, not rospy.Timer, so the check also runs while use_sim_time is set.
         thread = threading.Thread(target=self._loop, daemon=True)
         thread.start()
@@ -284,6 +454,67 @@ class Supervisor(object):
             except RuntimeError as error:
                 return TriggerResponse(False, str(error))
         return handle
+
+    def _use(self, setup):
+        self._setup = setup
+        self._commands = setup.commands
+        self._readiness = setup.readiness
+        self._run_guard = setup.run_guard
+        self._stamp_check = setup.stamp_check
+        rospy.set_param("~task", setup.task)
+        rospy.set_param("~robot", setup.robot)
+        self._task_pub.publish(String(json.dumps(
+            {"task": setup.task, "robot": setup.robot, "config_path": setup.config_path})))
+
+    def _handle_set_task(self, request):
+        try:
+            return SetTaskResponse(True, self.set_task(request.task))
+        except Exception as error:  # Every failure goes back to the caller.
+            self._log("set_task {} refused: {}".format(request.task, error))
+            return SetTaskResponse(False, str(error))
+
+    def set_task(self, task_name):
+        """Switch the tracker, the controllers (kang_grasp_controllers.launch) and this node to
+        another task, then move to its start pose. A running policy or home move is stopped
+        first, as ~stop does; on a failure the previous task stays."""
+        with self._lock:
+            setup = load_task(task_name, "", False)
+            # The controllers refuse to switch while a job still publishes commands.
+            self._stop_job_locked()
+            try:
+                # The observer's inferer would see the controllers change under it.
+                self._stop_observer_locked()
+                # The tracker first: it needs the camera images, and a YAML it refuses leaves
+                # the controllers alone. The new objects are not waited for.
+                tracker = self._tracker.switch(setup.tracker_objects) if self._tracker else "no tracker"
+            except Exception:
+                setup.close()
+                raise
+            try:
+                rospy.wait_for_service(self._controller_service, timeout=2.0)
+                response = rospy.ServiceProxy(self._controller_service, SetTask)(task_name)
+                if not response.success:
+                    raise RuntimeError("controllers: " + response.message)
+            except Exception:
+                setup.close()
+                if self._tracker:
+                    try:
+                        self._log("controllers refused; " + self._tracker.switch(
+                            self._setup.tracker_objects))
+                    except RuntimeError as error:
+                        self._log("tracker did not go back: {}".format(error))
+                raise
+            old, self._observer_exit = self._setup, 0.0
+            self._use(setup)
+            old.close()
+            for name in TASK_PARAMS:
+                if rospy.has_param("~" + name):
+                    rospy.delete_param("~" + name)
+            self._log("=== task {} ({}); {}; controllers: {} ===".format(
+                setup.task, setup.robot, tracker, response.message))
+            self._launch("home")
+        return "task {} ({}): {}; controllers: {}; moving home".format(
+            setup.task, setup.robot, tracker, response.message)
 
     def _log(self, line):
         rospy.loginfo("%s", line)
@@ -347,11 +578,13 @@ class Supervisor(object):
     def _loop(self):
         count = 0
         while not rospy.is_shutdown():
-            stamp, warning = self._readiness.last_warning
-            self._run_guard.check_stale(": " + warning if warning and time.monotonic() - stamp < 3.0 else "")
-            problem = self._stamp_check.problem() if self._stamp_check else None
+            # set_task replaces the checks; use one task's checks per cycle.
+            setup = self._setup
+            stamp, warning = setup.readiness.last_warning
+            setup.run_guard.check_stale(": " + warning if warning and time.monotonic() - stamp < 3.0 else "")
+            problem = setup.stamp_check.problem() if setup.stamp_check else None
             if problem:
-                self._run_guard.trip(problem)
+                setup.run_guard.trip(problem)
             if count % 5 == 0:
                 self._tick()
             count += 1
@@ -370,6 +603,9 @@ class Supervisor(object):
                 self._observer = Job("observer", self._commands["observer"],
                                      self._readiness.on_observer_line, self._on_observer_exit)
             ready, reasons, notes = self._evaluate_locked()
+        tracker = self._tracker.status() if self._tracker else None
+        if tracker:
+            notes = [tracker] + notes
         self._readiness_pub.publish(String(json.dumps(
             {"ready": ready, "reasons": reasons, "notes": notes})))
 
@@ -405,17 +641,60 @@ class Supervisor(object):
             self._stop_observer_locked()
 
 
-def main():
-    rospy.init_node("policy_supervisor")
-    task, config_path, config = node_config()
+# Private params that hold one task's settings or files. They apply to the task loaded at
+# startup only: set_task loads the next task from its files and drops them.
+TASK_PARAMS = ("home_launch", "ood_margin", "ood_margins", "running_ood_terms",
+               "running_ood_margin", "running_ood_frames", "running_timeout", "startup_timeout",
+               "object_stamp_max_future", "object_stamp_max_age", "object_stamp_window",
+               "start_config_path", "distribution_path", "deploy_command", "observer_command",
+               "home_command", "observation_topic")
+
+
+class TaskSetup(object):
+    """The commands and checks of one task."""
+
+    def __init__(self, task, robot, config_path, commands, readiness, run_guard, stamp_check,
+                 tracker_objects):
+        self.task = task
+        self.robot = robot
+        self.config_path = config_path
+        self.commands = commands
+        self.readiness = readiness
+        self.run_guard = run_guard
+        self.stamp_check = stamp_check
+        self.tracker_objects = tracker_objects
+
+    def close(self):
+        for check in (self.readiness, self.run_guard, self.stamp_check):
+            if check is not None:
+                check.close()
+
+
+def load_task(task_name, robot_name, overrides):
+    """Build a TaskSetup. overrides: whether the TASK_PARAMS private params apply."""
+    task, config_path = resolve(task_name, robot_name)
+    with open(config_path) as stream:
+        config = yaml.safe_load(stream)
+
+    def param(name, default):
+        return rospy.get_param("~" + name, default) if overrides else default
+
+    def task_setting(name, default):
+        if overrides:
+            return setting(name, default, config, task)
+        for source in (task, config):
+            if name in (source.get("supervisor") or {}):
+                return source["supervisor"][name]
+        return default
+
     model_dir = os.path.dirname(config["model_path"])
-    start_config = (rospy.get_param("~start_config_path", "")
+    start_config = (param("start_config_path", "")
                     or os.path.join(model_dir, "deployment_start_config.json"))
-    distribution_path = (rospy.get_param("~distribution_path", "")
+    distribution_path = (param("distribution_path", "")
                          or os.path.join(model_dir, "start_observation_distribution.json"))
     for path in (start_config, distribution_path):
         if not os.path.isfile(path):
-            raise SystemExit("not found: {}".format(path))
+            raise ValueError("not found: {}".format(path))
 
     inferer = " ".join([
         "roslaunch pal_policy_deployer kang_grasp_upperbody_deployer.launch",
@@ -424,7 +703,7 @@ def main():
     # The move always loads the task's config, so it moves that robot's joints. A robot whose
     # controllers run without the gravity bridge names a launch file that brings the bridge for
     # the move (the robot's supervisor: home_launch).
-    home_launch = setting("home_launch", "kang_grasp_gravcomp_move_to_start.launch", config, task)
+    home_launch = task_setting("home_launch", "kang_grasp_gravcomp_move_to_start.launch")
     # A private param of the move (_position_tolerance:=0.1) is the launch arg of that name.
     args = [arg[1:] if arg.startswith("_") else arg
             for arg in shlex.split(rospy.get_param("~home_args", ""))]
@@ -432,36 +711,58 @@ def main():
         "roslaunch pal_policy_deployer", home_launch, "config:=" + shlex.quote(config_path),
         "start_config_path:=" + shlex.quote(start_config)] + [shlex.quote(arg) for arg in args])
     commands = {
-        "policy": rospy.get_param("~deploy_command", inferer + " publish_commands:=true"),
-        "observer": rospy.get_param("~observer_command", inferer + " dry_run:=true"),
-        "home": rospy.get_param("~home_command", home),
+        "policy": param("deploy_command", inferer + " publish_commands:=true"),
+        "observer": param("observer_command", inferer + " dry_run:=true"),
+        "home": param("home_command", home),
     }
     for name, command in sorted(commands.items()):
         rospy.loginfo("%s: %s", name, command)
 
-    observation_topic = rospy.get_param(
-        "~observation_topic", config.get("observation_topic", "/pal_policy/observation"))
-    readiness = Readiness(
-        config, distribution_path, observation_topic,
-        float(rospy.get_param("~observation_window", 0.5)),
-        float(setting("ood_margin", 0.05, config, task)), setting("ood_margins", {}, config, task))
-    run_guard = RunGuard(
-        config["observation_terms"], load_distribution(distribution_path), observation_topic,
-        setting("running_ood_terms", ["object_to_goal_b"], config, task),
-        float(setting("running_ood_margin", 0.05, config, task)),
-        int(setting("running_ood_frames", 3, config, task)),
-        float(setting("running_timeout", 1.0, config, task)),
-        float(setting("startup_timeout", 20.0, config, task)))
-    # Median of the recent object TF stamp ages (receipt minus stamp) must lie in
-    # [-~object_stamp_max_future, ~object_stamp_max_age]; mock objects have no TF to check.
-    stamp_check = None
-    if config.get("object_frame"):
-        stamp_check = ObjectStampCheck(
-            config["object_frame"], float(rospy.get_param("~object_stamp_max_future", 0.05)),
-            float(rospy.get_param("~object_stamp_max_age", 0.5)),
-            int(rospy.get_param("~object_stamp_window", 15)))
-    supervisor = Supervisor(commands, readiness, run_guard, stamp_check,
-                            bool(rospy.get_param("~require_ready", True)))
+    observation_topic = param("observation_topic",
+                              config.get("observation_topic", "/pal_policy/observation"))
+    # The checks subscribe when built; close the ones built so far on a failure.
+    checks = []
+    try:
+        checks.append(Readiness(
+            config, distribution_path, observation_topic,
+            float(rospy.get_param("~observation_window", 0.5)),
+            float(task_setting("ood_margin", 0.05)), task_setting("ood_margins", {})))
+        checks.append(RunGuard(
+            config["observation_terms"], load_distribution(distribution_path), observation_topic,
+            task_setting("running_ood_terms", ["object_to_goal_b"]),
+            float(task_setting("running_ood_margin", 0.05)),
+            int(task_setting("running_ood_frames", 3)),
+            float(task_setting("running_timeout", 1.0)),
+            float(task_setting("startup_timeout", 20.0))))
+        # Median of the recent object TF stamp ages (receipt minus stamp) must lie in
+        # [-object_stamp_max_future, object_stamp_max_age]; mock objects have no TF to check.
+        stamp_check = None
+        if config.get("object_frame"):
+            stamp_check = ObjectStampCheck(
+                config["object_frame"],
+                float(task_setting("object_stamp_max_future", 0.05)),
+                float(task_setting("object_stamp_max_age", 0.5)),
+                int(task_setting("object_stamp_window", 15)))
+    except Exception:
+        for check in checks:
+            check.close()
+        raise
+    return TaskSetup(task["name"], robot_name or task["robot"], config_path, commands,
+                     checks[0], checks[1], stamp_check, task.get("tracker_objects"))
+
+
+def main():
+    rospy.init_node("policy_supervisor")
+    tracker = rospy.get_param("~tracker", TRACKER)
+    try:
+        setup = load_task(rospy.get_param("~task", ""), rospy.get_param("~robot", ""), True)
+        supervisor = Supervisor(
+            setup, bool(rospy.get_param("~require_ready", True)),
+            rospy.get_param("~controller_service", CONTROLLER_SERVICE),
+            (tracker, float(rospy.get_param("~tracker_first_wait", 30.0)),
+             float(rospy.get_param("~tracker_retry_period", 10.0))) if tracker else None)
+    except (ValueError, OSError, RuntimeError) as error:
+        raise SystemExit(str(error))
     rospy.on_shutdown(supervisor.shutdown)
     rospy.spin()
 

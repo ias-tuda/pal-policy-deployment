@@ -7,7 +7,7 @@ scene: {arrangement: A}
 # Mjlab-Grasp-UpperBody-Standing-ArmV36-Pal-Kangaroo-Grippers at pal_mjlab commit dfac6068:
 # waist, both arms and both jaws. Order matters.
 model:
-  model_path: /catkin_ws/src/models/kangaroo_grasp_upper_body_standing/2026-09-28_11-57-28_grasp-upperbody-standing-armv36-slow50-notable-binjaw-scratch_s42/model_700.onnx
+  model_path: /catkin_ws/src/open_lab/oopsie-data/ros/pal-policy-deployment/models/kangaroo_grasp_upper_body_standing/2026-09-28_11-57-28_grasp-upperbody-standing-armv36-slow50-notable-binjaw-scratch_s42/model_700.onnx
   observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel, tcp_pos_b, object_pos_b, object_yaw_b, goal_pos_b, tcp_quat_b]
   action_dim: 18
   action_mode: delta_joint_position
@@ -22,4 +22,7 @@ model:
 # Replace the object frame with a pose source before physical deployment, or use
 # mock_object_position_b / mock_object_yaw_b instead of object_frame.
 object_frame: cube_1
+# The tracker's objects YAML (absolute or relative to its ROOT_DIR); set_task switches the
+# FoundationPose tracker to it.
+tracker_objects: custom-assets/kang-grasp-cube/grasp-cube.yaml
 goal_position_b: [0.5, 0.11, 0.085]

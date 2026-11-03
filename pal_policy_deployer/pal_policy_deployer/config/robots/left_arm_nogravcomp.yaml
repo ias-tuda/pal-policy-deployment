@@ -39,7 +39,7 @@ tcp_offset: [0.0, 0.0, 0.148]   # site tcp_left in arm_left_7_link, no rotation
 joint_state_topic: /joint_states
 action_topic: /pal_policy/raw_actions
 policy_rate: 50.0
-state_timeout: 0.1
+state_timeout: 0.3   # WORKAROUND: dev PC clock ~140 ms ahead of robot; revert to 0.1 once clocks are synced
 
 # Supervisor defaults for this robot part (a task's `supervisor:` block or a ROS param overrides).
 supervisor:
