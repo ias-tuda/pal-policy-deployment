@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>voice_bridge</name>
+  <version>0.1.0</version>
+  <description>Localhost HTTP API for a voice agent to start the voice tasks through pal_policy_deployer's policy_supervisor, with the start checks in code</description>
+  <maintainer email="jan.fabig@stud.tu-darmstadt.de">Jan Fabig</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>python3-rospkg</exec_depend>
+  <exec_depend>rosgraph</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>pal_policy_deployer</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+</package>

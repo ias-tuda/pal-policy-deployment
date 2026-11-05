@@ -1,0 +1,20 @@
+<launch>
+  <!-- HTTP/JSON API for the voice agent, next to the policy supervisor (kang_grasp_supervisor.launch).
+       Only for the host it runs on unless host is changed; it has no authentication. -->
+  <arg name="host" default="127.0.0.1" doc="Address to listen on; 0.0.0.0 lets other PCs in the network start tasks." />
+  <arg name="port" default="8010" doc="8000 and 8002 are the phone pages." />
+  <arg name="tasks_file" default="$(find voice_bridge)/config/voice_tasks.yaml" doc="The tasks the voice agent may start." />
+  <arg name="supervisor" default="/pal_policy_supervisor" />
+
+  <!-- clear_params: a setting removed here must not stay on the robot's long-running master. -->
+  <node pkg="voice_bridge" type="voice_bridge_node.py" name="voice_bridge" output="screen" clear_params="true">
+    <param name="host" value="$(arg host)" />
+    <param name="port" value="$(arg port)" />
+    <param name="tasks_file" value="$(arg tasks_file)" />
+    <param name="supervisor" value="$(arg supervisor)" />
+    <param name="joint_state_topic" value="/subscriber_controller/actual_js_state" />
+    <param name="active_objects_topic" value="/tracking/active_objects_cfg" />
+    <!-- Limits in s and rad (voice_bridge/bridge.py Settings), for example ready_timeout: 20.0 -->
+    <rosparam param="settings">{}</rosparam>
+  </node>
+</launch>

@@ -1,0 +1,28 @@
+# The tasks the voice agent may start: one entry per behavior.
+#   task         a task file in pal_policy_deployer config/tasks/ (without .yaml)
+#   description  what the robot does, in the words people use; the voice agent shows it to the LLM
+#   aliases      other ways to say it (optional)
+# A task must also be one the supervisor can switch to (a button on the task page). After a new
+# task file, restart the supervisor; after a change here, restart the voice bridge.
+tasks:
+  - task: grasp-cube
+    description: Würfel greifen und anheben
+    aliases: [Würfel greifen, Würfel hochheben]
+  - task: stack-cube
+    description: Würfel aufeinander stapeln
+    aliases: [Würfel stapeln, Turm bauen]
+  - task: putintobox-s102-wx-a-h22-s1
+    description: Würfel in die Kiste legen
+    aliases: [Würfel in die Kiste, Würfel einräumen]
+  - task: putballintobox-s15-pb-dr-s1
+    description: Ball in den Steckblock fallen lassen
+    aliases: [Ball in den Steckblock, Ball in den Block]
+  - task: mug-ball
+    description: Ball in den Becher fallen lassen
+    aliases: [Ball in den Becher, Ball in die Tasse]
+  - task: mug-turn
+    description: Becher drehen, bis der Henkel zum Roboter zeigt
+    aliases: [Becher drehen, Tasse drehen]
+  - task: mug-coaster
+    description: Becher auf den Untersetzer stellen
+    aliases: [Becher auf den Untersetzer, Tasse abstellen]

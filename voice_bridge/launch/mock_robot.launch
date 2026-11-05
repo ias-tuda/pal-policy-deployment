@@ -1,0 +1,12 @@
+<launch>
+  <!-- A simulated supervisor, tracker and arm for the voice bridge (scripts/mock_supervisor.py),
+       on a master of its own: never next to the robot. Then: roslaunch voice_bridge voice_bridge.launch -->
+  <arg name="task" default="grasp-cube" doc="The startup task." />
+  <arg name="scale" default="1.0" doc="The simulated durations times this." />
+
+  <node pkg="voice_bridge" type="mock_supervisor.py" name="pal_policy_supervisor" output="screen">
+    <param name="task" value="$(arg task)" />
+    <param name="scale" value="$(arg scale)" />
+    <param name="tasks_file" value="$(find voice_bridge)/config/voice_tasks.yaml" />
+  </node>
+</launch>
