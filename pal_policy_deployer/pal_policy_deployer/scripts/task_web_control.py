@@ -40,7 +40,28 @@ from task_config import load_task
 GROUPS = {"left_arm_gravcomp": "G2 · left_arm_gravcomp (gravity bridge)",
           "left_arm_nogravcomp": "G3 · left_arm_nogravcomp (no bridge)"}
 # Tasks the page leaves out; set_task still accepts them from the command line.
-HIDDEN_TASKS = ["putintobox-s101-wx-a-s1", "pininsert-s12-in-t-s2", "mug-upright"]
+# mug-*: no mug in the lab; pickandplace-* (P1-P5) and stack-cube-siwei: hidden on request
+# (2026-11-04).
+HIDDEN_TASKS = ["putintobox-s101-wx-a-s1", "pininsert-s12-in-t-s2", "mug-upright",
+                "mug-ball", "mug-turn", "mug-turn-p1-old", "mug-coaster",
+                "pickandplace-cube", "pickandplace-dep1-t-c-s2", "pickandplace-dep1-wc-c-s1",
+                "pickandplace-s711-wj-jo-s2", "pickandplace-wc-abs-c-s78", "stack-cube-siwei"]
+# Button names; the task name shows below them. P1-P5 are the cube pick-and-place variants:
+# "left" starts the cube at base_link y 0.18-0.37 (goal x 0.46), "wide" shares one area with
+# the goal (goal x 0.56). A task without an entry shows its task name only.
+TASK_LABELS = {
+    "grasp-cube": "Cube: grasp and lift",
+    "pickandplace-cube": "P1 · Cube pick & place (left)",
+    "pickandplace-dep1-t-c-s2": "P2 · Cube pick & place (left, DEP1)",
+    "pickandplace-dep1-wc-c-s1": "P3 · Cube pick & place (wide)",
+    "pickandplace-s711-wj-jo-s2": "P4 · Cube pick & place (wide, P3 trained longer)",
+    "pickandplace-wc-abs-c-s78": "P5 · Cube pick & place (wide, absolute joints)",
+    "pickball-s81-wb-jw-s2": "Ball: pick & place",
+    "putballintobox-s15-pb-dr-s1": "Ball into the block hole",
+    "putintobox-s102-wx-a-h22-s1": "Cube into the box",
+    "stack-cube": "Stack cube (goal read once)",
+    "stack-cube-siwei": "Stack cube (goal follows cube_2)",
+}
 BRIDGE = "/gravity_compensation"
 SUBSCRIBER_CONTROLLER = "subscriber_controller"
 
@@ -61,6 +82,7 @@ h2{font-size:1em;margin:16px 0 6px;color:#ccc}
 .row button{flex:1 1 40%;padding:16px 8px;font-size:1em;border:0;border-radius:8px;color:#fff;
 background:#333;word-break:break-all}
 .row button.active{background:#1f5fbf;font-weight:700}
+.row button .label{display:block;word-break:normal}.row button .name{display:block;font-size:.75em;color:#bbb;margin-top:4px}
 #reregister{display:block;width:100%;padding:18px;margin:0 0 12px;font-size:1.2em;font-weight:600;border:0;
 border-radius:10px;color:#fff;background:#7b3fb5}
 button:disabled{opacity:.4}
@@ -99,7 +121,8 @@ async function switchTo(name){
 function render(){
   const s=status;if(!s)return;
   const t=s.task;
-  document.getElementById('task').textContent=(t?'Task: '+t.task+' ('+(s.groups[t.robot]||t.robot)+')':'Task: unknown')+
+  const cur=t&&s.tasks.find(x=>x.task===t.task);
+  document.getElementById('task').textContent=(t?'Task: '+(cur&&cur.label?cur.label+' \\u2014 ':'')+t.task+' ('+(s.groups[t.robot]||t.robot)+')':'Task: unknown')+
     (s.state&&s.state!=='idle'?'   \\u2014 '+s.state.toUpperCase()+' running':'');
   const checks=document.getElementById('checks');checks.innerHTML='';
   s.checks.forEach(c=>{const d=el('div',null,'check');d.appendChild(el('span',(c.ok?'\\u2713 ':'\\u2717 ')+c.name+': ',c.ok?'ok':'bad'));
@@ -115,7 +138,10 @@ function render(){
       box.appendChild(el('h2',s.groups[r]||r));
       const row=el('div',null,'row');
       s.tasks.filter(x=>x.robot===r).forEach(x=>{
-        const b=el('button',switching===x.task?'switching...':x.task,t&&x.task===t.task?'active':'');
+        const b=el('button',null,t&&x.task===t.task?'active':'');
+        if(switching===x.task)b.textContent='switching...';
+        else if(x.label){b.appendChild(el('span',x.label,'label'));b.appendChild(el('span',x.task,'name'));}
+        else b.textContent=x.task;
         b.disabled=!s.can_switch||switching!==null;b.onclick=()=>switchTo(x.task);row.appendChild(b);});
       box.appendChild(row);
     });
@@ -171,7 +197,8 @@ class TaskClient(object):
         self.task = json.loads(msg.data)
 
     def _on_tasks(self, msg):
-        self.tasks = [entry for entry in json.loads(msg.data) if entry["task"] not in self._hidden_tasks]
+        self.tasks = [dict(entry, label=TASK_LABELS.get(entry["task"], ""))
+                      for entry in json.loads(msg.data) if entry["task"] not in self._hidden_tasks]
 
     def _on_log(self, msg):
         self.log.append(time.strftime("%H:%M:%S ") + msg.data)

@@ -52,9 +52,12 @@ supervisor:
     joint_target_rel: 0.15   # rad
     tcp_pos_b: 0.03          # m
     tcp_quat_b: 0.1
-    object_pos_b: 0.03       # m
+    # Test 2026-11-04: the training start area (cube x <= 0.476, goal x <= 0.48) is outside the
+    # torso camera view (it sees the table from x ~0.52-0.55), so widened to let cubes at x 0.55-0.60
+    # pass. Out of the training distribution: the policy can fail. Back to 0.03 / 0.02 after the test.
+    object_pos_b: 0.13       # m
     object_yaw_b: 0.2
-    goal_pos_b: 0.02         # m
+    goal_pos_b: 0.12         # m
   # While the policy runs, stop it when cube_1 leaves the box of the training start ranges of
   # the cube and the goal, widened by the margin, for running_ood_frames frames, or when no
   # observation (stale joint state or TF) arrives.

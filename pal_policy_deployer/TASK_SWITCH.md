@@ -160,18 +160,25 @@ rosnode list | grep gravity_compensation
 | Task | Group | Tracker objects (`custom-assets/kang-grasp-cube/`) |
 | --- | --- | --- |
 | grasp-cube | G2 | grasp-cube.yaml (`cube_1`) |
-| mug-ball | G2 | mug-ball.yaml (`mug_1`, `ball_1`) |
-| mug-turn, mug-turn-p1-old, mug-coaster (mug-upright\*) | G2 | turn-mug.yaml (`mug_1`) |
+| mug-ball\* | G2 | mug-ball.yaml (`mug_1`, `ball_1`) |
+| mug-turn\*, mug-turn-p1-old\*, mug-coaster\*, mug-upright\* | G2 | turn-mug.yaml (`mug_1`) |
 | stack-cube | G2 | stack-cube.yaml (`cube_1`, `cube_2`) |
-| pickandplace-cube, pickandplace-* | G3 | grasp-cube.yaml (`cube_1`) |
+| pickandplace-cube\*, pickandplace-\* | G3 | grasp-cube.yaml (`cube_1`) |
 | pickball-s81-wb-jw-s2 | G3 | ball_60.yaml (`ball_1`) |
 | putballintobox-s15-pb-dr-s1 | G3 | ball-block.yaml (`ball_1`, `block_1`) |
 | putintobox-s102-wx-a-h22-s1 (putintobox-s101-wx-a-s1\*) | G3 | box-cube.yaml (`box_1`, `cube_1`) |
-| stack-cube-siwei | G3 | stack-cube.yaml (`cube_1`, `cube_2`) |
+| stack-cube-siwei\* | G3 | stack-cube.yaml (`cube_1`, `cube_2`) |
 | pininsert-s12-in-t-s2\* | G3 | none: the tracker is left as it is |
 
 \* Not on the task page (`HIDDEN_TASKS` in `task_web_control.py`, or
-`_hidden_tasks:="[a, b]"`). `set_task` from the command line still accepts them.
+`_hidden_tasks:="[a, b]"`). `set_task` from the command line still accepts them. Since
+2026-11-04 the page also hides the mug tasks (no mug), the cube pick-and-place tasks
+(P1-P5) and stack-cube-siwei.
+
+The buttons show a name from `TASK_LABELS` in `task_web_control.py`, with the task name below
+it. The cube pick-and-place variants are P1-P5: P1 pickandplace-cube, P2
+pickandplace-dep1-t-c-s2, P3 pickandplace-dep1-wc-c-s1, P4 pickandplace-s711-wj-jo-s2 (P3
+trained longer), P5 pickandplace-wc-abs-c-s78 (absolute joint actions).
 
 The tracker objects are the task file's `tracker_objects:` key. A new task gets a button when
 its robot drives the same joints as the running one (G2 and G3 do); restart the supervisor to
