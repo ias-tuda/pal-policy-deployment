@@ -32,6 +32,7 @@ the deployment config that the nodes read.
 | `grasp-cube` | `left_arm_gravcomp` | Grasp the cube and move it to the goal. Current default. |
 | `grasp-cube-upperbody` | `upper_body_nogravcomp` | The same with the waist, both arms and both jaws. |
 | `stack-cube` | `left_arm_gravcomp` | Stack the cube (`cube_1`) on a second cube (`cube_2`). Constant goal, see the task file. |
+| `upper-body-tracking` | `upper_body_nojaw_nogravcomp` | Follow hand and torso goals from `/upper_body/goal`. See [Upper-body goal tracking](#upper-body-goal-tracking). |
 
 `config/legacy/` holds the older end-effector policy (`cube`, `mock`: IK and a mocked object
 pose) as flat config files without a task. Pass them as `config:=<path>`.
@@ -170,6 +171,37 @@ Supported observation terms: `joint_pos_rel`, `joint_vel`, `last_action`, `joint
 jaw of `jaw_joints` (jaw i on `tip_links[i]`; `jaw_joint` for one jaw); `object_yaw_to_jaw`
 uses the first jaw. `joint_target_rel` is the commanded target minus the default pose, also for
 `joint_position` models (pal_mjlab `commanded_target_rel`).
+
+## Upper-body goal tracking
+
+Task `upper-body-tracking` (robot `upper_body_nojaw_nogravcomp`) runs pal_mjlab's
+`Mjlab-UpperBody-Tracking-Pal-Kangaroo-Grippers`. The policy drives the waist and both arms,
+16 delta joints, to a goal: a pose for each TCP and an orientation for the torso.
+
+**Goal input.** A `geometry_msgs/PoseArray` on `ub_goal_topic` (default `/upper_body/goal`) in
+`base_link`, with 3 poses: `[left TCP, right TCP, torso]`. The torso's position is ignored. The TCP
+is `tip_links[i]` plus `tcp_offset`.
+- Until a goal arrives *after* the policy started, the goal is the pose at the start, so the
+  robot holds still.
+- In dry run (the supervisor's start check), the goal follows the measured pose.
+- Messages in another frame, with a size other than 3, or with invalid values are dropped.
+
+**Observation terms.** `goal_tcp_pos_b` (6), `goal_tcp_rot6d_b` (12), `goal_torso_rot6d_b` (6),
+`tcp_pos_error_b` (6), `tcp_rot_error_b` (6), `torso_rot_error_b` (3).
+- rot6d is the rotation matrix's columns 0 and 1.
+- An orientation error is the axis-angle vector of `R_goal R_current^T`.
+- Positions and errors are goal minus current, left before right.
+- These terms need `tip_links: [left, right]` and `torso_link`.
+
+**Goal sources.** `scripts/upper_body_goal_markers.py` (Python 2, for `tf2_ros` on Melodic):
+
+```bash
+rosrun pal_policy_deployer upper_body_goal_markers.py                  # RViz interactive markers
+rosrun pal_policy_deployer upper_body_goal_markers.py _demo:=circle    # scripted circles, no RViz
+```
+
+The markers start at the robot's current poses. Goal positions are clamped to `~max_offset`
+(0.35 m) from there.
 
 ## Locomotion
 

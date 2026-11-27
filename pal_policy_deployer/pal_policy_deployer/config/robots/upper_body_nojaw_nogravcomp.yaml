@@ -1,0 +1,55 @@
+# A robot part and how it is driven: the waist and both arms (16 joints), without gravity
+# feedforward (the PD error of the targets holds the arms up). The jaws are not driven: PAL's
+# gripper controllers keep them, so another node can open and close them. For the upper-body
+# goal tracker (pal_mjlab Mjlab-UpperBody-Tracking-Pal-Kangaroo-Grippers). Order matters.
+gravity_compensation: false
+
+# joint_pos_rel, joint_vel and the actions are all over these 16 joints, in this order.
+joint_names: [pelvis_1_joint, pelvis_2_joint,
+              arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+              arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+arm_joint_names: [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                  arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+joint_vel_names: [pelvis_1_joint, pelvis_2_joint,
+                  arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                  arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+
+# DeltaJointPositionAction on all 16 actions: target = clip(target + action_scale * clip(action, -1, 1)).
+# action_scale (rad per 50 Hz step) is read from params/env.yaml beside the model.
+action_joint_names: [pelvis_1_joint, pelvis_2_joint,
+                     arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                     arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+# Soft joint limits (0.9 of the MJCF range about its centre), as in training.
+target_lower: [-0.314159, -1.1781,
+               -2.356191, -0.955564, -2.356191, -0.955564, -2.356191, -1.640613, -2.356191,
+               -2.356191, -0.955564, -2.356191, -0.955564, -2.356191, -1.640613, -2.356191]
+target_upper: [0.314159, 1.1781,
+               2.356191, 2.264564, 2.356191, 2.264564, 2.356191, 2.757624, 2.356191,
+               2.356191, 2.264564, 2.356191, 2.264564, 2.356191, 2.757624, 2.356191]
+# No jaw actions.
+gripper_joint_names: []
+command_topic: /subscriber_controller/desired_state
+preview_topic: /pal_policy/desired_state
+publish_commands: false
+
+# Joints the spawner puts under direct_impedance_control with the env.yaml gains. No jaws: an
+# empty list, not a missing key (the spawner's default is the left jaw).
+impedance_joint_names: [pelvis_1_joint, pelvis_2_joint,
+                        arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint, arm_left_5_joint, arm_left_6_joint, arm_left_7_joint,
+                        arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint, arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+position_joint_names: []
+
+robot_description: robot_description
+base_link: base_link
+# The two TCPs (tcp_pos_b, the goal terms), left then right, and the torso for the torso terms.
+tip_links: [arm_left_7_link, arm_right_7_link]
+tcp_offset: [0.0, 0.0, 0.148]
+torso_link: pelvis_2_link
+joint_state_topic: /joint_states
+action_topic: /pal_policy/raw_actions
+policy_rate: 50.0
+state_timeout: 0.1
+
+supervisor:
+  # The home move needs whole-tree gravity compensation, which the policy runs without.
+  home_launch: kang_grasp_upperbody_move_to_start.launch

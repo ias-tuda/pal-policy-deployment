@@ -1,0 +1,41 @@
+# Follow upper-body goals: a pose for each TCP and an orientation for the torso, in base_link,
+# from a geometry_msgs/PoseArray on /upper_body/goal ([left TCP, right TCP, torso]; the torso's
+# position is ignored). Until a goal arrives after the policy started, it holds the start pose.
+# Goal sources: scripts/upper_body_goal_markers.py (RViz), teleoperation, a planner, other policies.
+robot: upper_body_nojaw_nogravcomp
+instruction: Follow the upper-body goal
+scene: {arrangement: none}
+
+# Mjlab-UpperBody-Tracking-Pal-Kangaroo-Grippers (pal-policy-training, branch
+# feature/upper-body-tracking). 16 joint positions, 16 velocities, 16 last actions, 16 targets,
+# then the goal: TCP positions (6), TCP rot6d (12), torso rot6d (6), TCP position errors (6),
+# TCP orientation errors (6), torso orientation error (3): 103 observations, 16 actions.
+model:
+  # TODO: set to the trained model and fill target_preload from its
+  # start_observation_distribution.json (mean of joint_target_rel minus joint_pos).
+  model_path: /catkin_ws/src/models/kangaroo-upper-body-tracking/MODEL/policy.onnx
+  observation_terms: [joint_pos_rel, joint_vel, last_action, joint_target_rel,
+                      goal_tcp_pos_b, goal_tcp_rot6d_b, goal_torso_rot6d_b,
+                      tcp_pos_error_b, tcp_rot_error_b, torso_rot_error_b]
+  action_dim: 16
+  action_mode: delta_joint_position
+  target_preload: [0.0, 0.0,
+                   0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                   0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+ub_goal_topic: /upper_body/goal
+# No object: the inferer's object source is unused by these observation terms, but it still
+# requires one. A fixed dummy, never observed.
+mock_object_position_b: [0.0, 0.0, 0.0]
+
+supervisor:
+  ood_margin: 0.05
+  ood_margins:
+    joint_pos_rel: 0.15      # rad
+    joint_vel: 0.3           # rad/s
+    joint_target_rel: 0.15   # rad
+    tcp_pos_error_b: 0.03    # m: at the start the goal is the measured pose
+    tcp_rot_error_b: 0.1     # rad
+    torso_rot_error_b: 0.1   # rad
+  # No object to watch while running; the running check is the observation timeout only.
+  running_ood_terms: []

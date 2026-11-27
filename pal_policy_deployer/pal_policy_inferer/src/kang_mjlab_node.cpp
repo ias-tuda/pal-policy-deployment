@@ -6,6 +6,7 @@
 #include <sensor_msgs/JointState.h>
 #include <sensor_msgs/Imu.h>
 #include <geometry_msgs/Point.h>
+#include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/Twist.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <nav_msgs/Odometry.h>
@@ -194,6 +195,23 @@ std::vector<std::string> grasp_tip_links;
 std::vector<GraspTcp> grasp_tcps;
 std::vector<std::string> grasp_chain_joint_names;  // union of all TCP chains
 KDL::Vector grasp_tcp_offset;
+// Upper-body goal tracking (pal_mjlab Mjlab-UpperBody-Tracking-*). The goal is a pose for each
+// TCP (tip_links order: left, right) and an orientation for torso_link, all in base_link, from
+// a geometry_msgs/PoseArray on ub_goal_topic: [left TCP, right TCP, torso] (the torso's position
+// is ignored). Until a goal arrives after the policy started, the goal is the pose the robot had
+// at its start, so the policy holds still; in dry run it follows the measured pose, which is
+// what training starts from (the start check compares against that).
+bool grasp_ub_enabled = false;
+std::string grasp_torso_link;
+std::unique_ptr<GraspTcp> grasp_torso;  // FK chain base_link -> torso_link
+std::vector<KDL::Frame> grasp_ub_goal;  // left TCP, right TCP, torso
+bool grasp_ub_goal_latched = false;
+ros::Time grasp_ub_policy_start;
+geometry_msgs::PoseArray grasp_ub_goal_msg;
+ros::Time grasp_ub_goal_msg_time;
+bool grasp_ub_goal_msg_valid = false;
+ros::Subscriber grasp_ub_goal_sub;
+std::string grasp_ub_goal_topic = "/upper_body/goal";
 // tcp_quat_b sign convention of the training code: largest_positive (mjlab quat_from_matrix)
 // or w_positive.
 bool grasp_tcp_quat_w_positive = false;
@@ -328,7 +346,89 @@ int graspTermDim(const std::string& term)
     if (term == "object_rot6d_b") return 6;
     if (term == "object_yaw_to_jaw") return grasp_jaw_joints.empty() ? -1 : 2;
     if (term == "tcp_quat_b") return 4 * grasp_tip_links.size();
+    // Upper-body goal tracking: two TCPs (left, right) and the torso.
+    if (term == "goal_tcp_pos_b" || term == "tcp_pos_error_b" || term == "tcp_rot_error_b")
+        return grasp_tip_links.size() == 2 ? 6 : -1;
+    if (term == "goal_tcp_rot6d_b") return grasp_tip_links.size() == 2 ? 12 : -1;
+    if (term == "goal_torso_rot6d_b") return grasp_torso_link.empty() ? -1 : 6;
+    if (term == "torso_rot_error_b") return grasp_torso_link.empty() ? -1 : 3;
     return -1;
+}
+
+bool isUpperBodyTerm(const std::string& term)
+{
+    return term == "goal_tcp_pos_b" || term == "goal_tcp_rot6d_b" || term == "goal_torso_rot6d_b" ||
+           term == "tcp_pos_error_b" || term == "tcp_rot_error_b" || term == "torso_rot_error_b";
+}
+
+// pal_mjlab's rot6d: the rotation's x axis, then its y axis (matrix columns 0 and 1).
+void appendRot6d(std::vector<float>& obs, const KDL::Rotation& r)
+{
+    for (const int c : {0, 1})
+        for (int row = 0; row < 3; ++row) obs.push_back(static_cast<float>(r(row, c)));
+}
+
+// pal_mjlab's orientation error: the axis-angle vector of goal * current^-1, in base_link.
+void appendRotError(std::vector<float>& obs, const KDL::Rotation& goal, const KDL::Rotation& current)
+{
+    const KDL::Vector v = (goal * current.Inverse()).GetRot();
+    obs.insert(obs.end(), {static_cast<float>(v.x()), static_cast<float>(v.y()), static_cast<float>(v.z())});
+}
+
+void graspUpperBodyGoalCb(const geometry_msgs::PoseArray::ConstPtr& msg)
+{
+    std::lock_guard<std::mutex> lock(grasp_mutex);
+    if (msg->poses.size() != 3) {
+        ROS_WARN_THROTTLE(1.0, "Upper-body goal needs 3 poses [left TCP, right TCP, torso], got %zu",
+                          msg->poses.size());
+        return;
+    }
+    if (!msg->header.frame_id.empty() && msg->header.frame_id != grasp_base_link) {
+        ROS_WARN_THROTTLE(1.0, "Upper-body goal must be in %s, not %s", grasp_base_link.c_str(),
+                          msg->header.frame_id.c_str());
+        return;
+    }
+    for (const auto& pose : msg->poses) {
+        const auto& p = pose.position;
+        const auto& q = pose.orientation;
+        const double norm = std::sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
+        if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) || !std::isfinite(norm) ||
+            norm < 0.5) {
+            ROS_WARN_THROTTLE(1.0, "Upper-body goal has a non-finite position or an invalid quaternion");
+            return;
+        }
+    }
+    grasp_ub_goal_msg = *msg;
+    grasp_ub_goal_msg_time = ros::Time::now();
+    grasp_ub_goal_msg_valid = true;
+}
+
+KDL::Frame poseToFrame(const geometry_msgs::Pose& pose)
+{
+    const auto& q = pose.orientation;
+    const double n = std::sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
+    return KDL::Frame(KDL::Rotation::Quaternion(q.x / n, q.y / n, q.z / n, q.w / n),
+                      KDL::Vector(pose.position.x, pose.position.y, pose.position.z));
+}
+
+// The goal of this step: the measured pose in dry run; the pose at the policy's start until a
+// goal message arrives after it; then the latest message.
+void updateUpperBodyGoal(const std::vector<KDL::Frame>& tcp_frames, const KDL::Frame& torso)
+{
+    if (grasp_dry_run) {
+        grasp_ub_goal = {tcp_frames[0], tcp_frames[1], torso};
+        return;
+    }
+    if (!grasp_ub_goal_latched) {
+        grasp_ub_goal = {tcp_frames[0], tcp_frames[1], torso};
+        grasp_ub_policy_start = ros::Time::now();
+        grasp_ub_goal_latched = true;
+        ROS_INFO("Upper-body goal: holding the start pose until a goal arrives on %s",
+                 grasp_ub_goal_topic.c_str());
+    }
+    if (grasp_ub_goal_msg_valid && grasp_ub_goal_msg_time > grasp_ub_policy_start) {
+        for (size_t i = 0; i < 3; ++i) grasp_ub_goal[i] = poseToFrame(grasp_ub_goal_msg.poses[i]);
+    }
 }
 
 ros::Publisher pub_sub_cmd;
@@ -975,6 +1075,13 @@ bool buildGraspObservation(std::vector<float>& obs)
         tip_frames.push_back(tip);
         tcp_frames.push_back(tip * KDL::Frame(grasp_tcp_offset));
     }
+    KDL::Frame torso_frame;
+    if (grasp_torso) {
+        KDL::JntArray q(grasp_torso->q_indices.size());
+        for (size_t j = 0; j < grasp_torso->q_indices.size(); ++j) q(j) = grasp_chain_q[grasp_torso->q_indices[j]];
+        if (grasp_torso->fk->JntToCart(q, torso_frame) < 0) return false;
+    }
+    if (grasp_ub_enabled) updateUpperBodyGoal(tcp_frames, torso_frame);
     std::vector<KDL::Vector> jaw_mids;
     double jaw_axis_yaw = 0.0;
     for (size_t jaw = 0; jaw < grasp_jaw_indices.size(); ++jaw) {
@@ -1053,6 +1160,22 @@ bool buildGraspObservation(std::vector<float>& obs)
                 obs.insert(obs.end(), {static_cast<float>(sign * w), static_cast<float>(sign * x),
                                        static_cast<float>(sign * y), static_cast<float>(sign * z)});
             }
+        } else if (term == "goal_tcp_pos_b") {
+            for (size_t i = 0; i < 2; ++i)
+                for (int k = 0; k < 3; ++k) obs.push_back(static_cast<float>(grasp_ub_goal[i].p(k)));
+        } else if (term == "goal_tcp_rot6d_b") {
+            for (size_t i = 0; i < 2; ++i) appendRot6d(obs, grasp_ub_goal[i].M);
+        } else if (term == "goal_torso_rot6d_b") {
+            appendRot6d(obs, grasp_ub_goal[2].M);
+        } else if (term == "tcp_pos_error_b") {
+            // Goal minus current.
+            for (size_t i = 0; i < 2; ++i)
+                for (int k = 0; k < 3; ++k)
+                    obs.push_back(static_cast<float>(grasp_ub_goal[i].p(k) - tcp_frames[i].p(k)));
+        } else if (term == "tcp_rot_error_b") {
+            for (size_t i = 0; i < 2; ++i) appendRotError(obs, grasp_ub_goal[i].M, tcp_frames[i].M);
+        } else if (term == "torso_rot_error_b") {
+            appendRotError(obs, grasp_ub_goal[2].M, torso_frame.M);
         }
     }
     if (obs.size() != static_cast<size_t>(config.obs_dim) ||
@@ -1767,6 +1890,15 @@ bool loadGraspPolicyConfig(ros::NodeHandle& nh, const std::string& model_path)
             return false;
         }
     }
+    // Upper-body goal tracking: the torso link (for the torso terms) and the goal topic.
+    nh.param<std::string>("torso_link", grasp_torso_link, "");
+    nh.param<std::string>("ub_goal_topic", grasp_ub_goal_topic, "/upper_body/goal");
+    grasp_ub_enabled = std::any_of(grasp_observation_terms.begin(), grasp_observation_terms.end(),
+                                   isUpperBodyTerm);
+    if (grasp_ub_enabled && (grasp_tip_links.size() != 2 || grasp_torso_link.empty())) {
+        ROS_ERROR("Upper-body goal terms need tip_links [left, right] and torso_link");
+        return false;
+    }
     config.obs_dim = 0;
     for (const auto& term : grasp_observation_terms) {
         const int dim = graspTermDim(term);
@@ -1919,6 +2051,27 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
         }
         tcp.fk.reset(new KDL::ChainFkSolverPos_recursive(tcp.chain));
     }
+    grasp_torso.reset();
+    if (!grasp_torso_link.empty()) {
+        // The torso chain's joints (the waist) are also on the TCP chains, so their positions
+        // are already in grasp_chain_q.
+        grasp_torso.reset(new GraspTcp());
+        if (!tree.getChain(base_link, grasp_torso_link, grasp_torso->chain)) {
+            ROS_ERROR("Could not build KDL chain %s -> %s", base_link.c_str(), grasp_torso_link.c_str());
+            return false;
+        }
+        for (const auto& segment : grasp_torso->chain.segments) {
+            if (segment.getJoint().getType() == KDL::Joint::None) continue;
+            const auto it = std::find(grasp_chain_joint_names.begin(), grasp_chain_joint_names.end(),
+                                      segment.getJoint().getName());
+            if (it == grasp_chain_joint_names.end()) {
+                ROS_ERROR("Torso joint %s is not on a TCP chain", segment.getJoint().getName().c_str());
+                return false;
+            }
+            grasp_torso->q_indices.push_back(static_cast<size_t>(it - grasp_chain_joint_names.begin()));
+        }
+        grasp_torso->fk.reset(new KDL::ChainFkSolverPos_recursive(grasp_torso->chain));
+    }
     for (const auto& arm_joint_name : grasp_arm_joint_names) {
         if (std::find(grasp_chain_joint_names.begin(), grasp_chain_joint_names.end(),
                       arm_joint_name) == grasp_chain_joint_names.end()) {
@@ -1940,6 +2093,13 @@ bool initializeGraspPolicy(ros::NodeHandle& nh)
                   config.obs_dim, config.action_dim); return false;
     }
     grasp_joint_state_sub = nh.subscribe(joint_state_topic, 1, graspJointStateCb);
+    if (grasp_ub_enabled) {
+        grasp_ub_goal_latched = false;
+        grasp_ub_goal_msg_valid = false;
+        grasp_ub_goal_sub = nh.subscribe(grasp_ub_goal_topic, 1, graspUpperBodyGoalCb);
+        ROS_INFO("Upper-body goals from %s (PoseArray in %s: left TCP, right TCP, torso)",
+                 grasp_ub_goal_topic.c_str(), base_link.c_str());
+    }
     grasp_action_pub = nh.advertise<std_msgs::Float64MultiArray>(grasp_action_topic, 1);
     grasp_observation_pub = nh.advertise<std_msgs::Float64MultiArray>(observation_topic, 1);
     if (!grasp_object_frame.empty()) {
